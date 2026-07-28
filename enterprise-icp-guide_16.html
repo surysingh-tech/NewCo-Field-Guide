@@ -1,0 +1,2271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>dbt field guide — account map & dev lifecycle</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#ffffff;
+    --paper-2:#f6f8fb;
+    --ink:#0a2540;
+    --ink-soft:#41506b;
+    --ink-mute:#8896ad;
+    --orange:#ff5c35;
+    --orange-deep:#e5410f;
+    --orange-tint:#fff2ec;
+    --thread:#d4dce8;
+    --thread-soft:#e6ecf4;
+    --line:#e8edf4;
+    --shadow: 0 18px 40px -22px rgba(10,37,64,.35);
+    --shadow-soft: 0 8px 24px -16px rgba(10,37,64,.30);
+    --panel-w: clamp(400px, 47vw, 720px);
+    --display:"Space Grotesk", system-ui, sans-serif;
+    --body:"IBM Plex Sans", system-ui, sans-serif;
+    --mono:"IBM Plex Mono", ui-monospace, monospace;
+    --ease: cubic-bezier(.22,.68,.24,1);
+  }
+
+  *{ box-sizing:border-box; }
+  html,body{ height:100%; }
+  body{
+    margin:0;
+    font-family:var(--body);
+    color:var(--ink-soft);
+    background:var(--paper);
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow:hidden;
+  }
+
+  /* ambient page glows + dot texture */
+  .bg{
+    position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden;
+  }
+  .bg::before{
+    content:""; position:absolute; top:-28vh; left:50%; transform:translateX(-50%);
+    width:120vw; height:70vh;
+    background:radial-gradient(60% 60% at 50% 0%, rgba(255,92,53,.14), rgba(255,92,53,0) 70%);
+  }
+  .bg::after{
+    content:""; position:absolute; right:-20vw; bottom:-24vh;
+    width:70vw; height:60vh;
+    background:radial-gradient(50% 50% at 70% 80%, rgba(76,111,255,.12), rgba(76,111,255,0) 72%);
+  }
+  .bg .dots{
+    position:absolute; inset:0;
+    background-image:radial-gradient(rgba(10,37,64,.05) 1px, transparent 1.4px);
+    background-size:22px 22px;
+    mask-image:radial-gradient(90% 80% at 50% 40%, #000 55%, transparent 100%);
+    -webkit-mask-image:radial-gradient(90% 80% at 50% 40%, #000 55%, transparent 100%);
+  }
+
+  .app{ position:relative; z-index:1; height:100%; display:flex; flex-direction:column; }
+
+  /* ---------- hero header ---------- */
+  .hero-top{
+    display:none; flex-direction:column; gap:18px;
+    padding:16px clamp(16px,3vw,34px) 30px;
+    background:linear-gradient(135deg, #050a12 0%, #0a2540 55%, #123156 100%);
+    color:#fff; position:relative; overflow:hidden; z-index:6;
+  }
+  body.is-map .hero-top{ display:flex; }
+  .hero-top::after{
+    content:""; position:absolute; top:-60%; right:-8%; width:55%; height:180%;
+    background:radial-gradient(closest-side, rgba(255,92,53,.16), transparent 70%);
+    pointer-events:none;
+  }
+  .hero-util{ display:flex; align-items:center; gap:16px; position:relative; z-index:1; }
+  .hero-util .spacer{ flex:1; }
+  .hero-main{ text-align:center; position:relative; z-index:1; }
+  .hero-title{ font-family:var(--display); font-weight:700; font-size:clamp(24px,3.6vw,34px); margin:4px 0 8px; letter-spacing:-.02em; }
+  .hero-subtitle{ margin:0 0 20px; font-size:14px; line-height:1.5; color:rgba(255,255,255,.66); max-width:560px; margin-left:auto; margin-right:auto; }
+
+  .brand{ display:flex; align-items:center; gap:10px; font-family:var(--display); font-weight:700; letter-spacing:-.01em; }
+  .brand .mark{
+    font-size:20px; color:var(--orange); background:rgba(255,92,53,.14);
+    padding:2px 9px; border-radius:8px; line-height:1.35;
+  }
+  .brand .sep{ width:1px; height:20px; background:rgba(255,255,255,.16); }
+  .brand .kicker{ font-family:var(--mono); font-size:11px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:rgba(255,255,255,.62); }
+  .acct{
+    display:flex; align-items:center; gap:9px;
+    font-family:var(--mono); font-size:12px; letter-spacing:.02em; color:rgba(255,255,255,.78);
+    background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+    padding:6px 12px; border-radius:999px;
+  }
+  .acct .dot{ width:7px; height:7px; border-radius:50%; background:var(--orange); box-shadow:0 0 0 4px rgba(255,92,53,.18); }
+  .reset{
+    appearance:none; border:1px solid rgba(255,255,255,.16); background:transparent; color:rgba(255,255,255,.8);
+    font-family:var(--body); font-size:13px; font-weight:500; padding:7px 13px; border-radius:999px; cursor:pointer;
+    transition:background .2s, color .2s, border-color .2s;
+  }
+  .reset:hover{ background:rgba(255,255,255,.08); color:#fff; }
+
+  /* ---------- section head (below hero) ---------- */
+  .section-head{ display:none; text-align:center; padding:30px clamp(16px,3vw,34px) 2px; }
+  body.is-map .section-head{ display:block; }
+  .section-head h2{ font-family:var(--display); font-weight:700; font-size:25px; color:var(--ink); margin:0 0 8px; letter-spacing:-.01em; }
+  .section-head p{ margin:0; font-size:14.5px; color:var(--ink-soft); }
+
+  .stage-wrap{ position:relative; flex:1; min-height:0; }
+
+  /* ---------- map + web ---------- */
+  .map{ position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .55s var(--ease) .1s; }
+  body.is-map.view-teams .map{ opacity:1; pointer-events:auto; }
+
+  .stage{ position:absolute; inset:0; overflow:hidden; }
+  .stage-inner{
+    position:absolute; inset:0; transform-origin:0 0;
+    transition:transform .55s var(--ease);
+  }
+  svg.web{ position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
+  .thread{ stroke:var(--thread); stroke-width:1.8; fill:none; }
+  .flow-divider{ stroke:var(--line); stroke-width:1.5; stroke-dasharray:3 5; }
+
+  .nodes{ position:absolute; inset:0; }
+  .node{
+    position:absolute; appearance:none; border:1.5px solid var(--line); background:#fff; cursor:pointer; padding:12px 14px 10px;
+    border-radius:14px; border-left:3px solid var(--c); text-align:left; box-shadow:var(--shadow-soft);
+    display:flex; flex-direction:column; justify-content:center;
+    transition:transform .3s var(--ease), box-shadow .3s var(--ease), opacity .35s var(--ease);
+  }
+  .node .disc{
+    width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:var(--c);
+    background:color-mix(in srgb, var(--c) 14%, #fff); margin-bottom:7px; position:relative;
+  }
+  .node .disc svg{ width:15px; height:15px; }
+  .node .plus{
+    position:absolute; right:-5px; bottom:-5px; width:15px; height:15px; border-radius:50%;
+    background:var(--c); color:#fff; display:grid; place-items:center; font-size:10px; line-height:1;
+    font-family:var(--display); transition:transform .25s var(--ease);
+  }
+  .node .lbl{ font-family:var(--display); font-weight:700; font-size:13px; color:var(--ink); letter-spacing:-.01em; line-height:1.25; }
+  .node .sub{ margin-top:2px; font-family:var(--mono); font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-mute); }
+  .node .node-medal{
+    position:absolute; top:-9px; right:10px; font-family:var(--mono); font-size:8px; font-weight:700; letter-spacing:.02em;
+    text-transform:uppercase; color:#fff; background:var(--c); padding:2px 7px; border-radius:999px; white-space:nowrap;
+  }
+  .node:hover{ transform:translateY(-3px); box-shadow:var(--shadow); }
+  .node:hover .plus{ transform:scale(1.15) rotate(90deg); }
+  .node:focus-visible{ outline:none; box-shadow:0 0 0 3px color-mix(in srgb, var(--c) 35%, #fff), var(--shadow); }
+
+  .node--primary{ border-left-width:4px; }
+  .node--primary .sub{ color:var(--orange-deep); font-weight:700; }
+  .node--low{ opacity:.7; }
+  .node--low .lbl{ color:var(--ink-soft); }
+
+  .map-legend{ display:flex; justify-content:center; flex-wrap:wrap; gap:18px; padding:0 20px 16px; font-size:12px; color:var(--ink-soft); position:relative; z-index:2; }
+  .map-legend-item{ display:flex; align-items:center; gap:6px; }
+  .map-legend-item .dot{ width:8px; height:8px; border-radius:50%; background:var(--thread); flex:0 0 auto; }
+  .map-legend-item.is-primary{ color:var(--ink); font-weight:600; }
+  .map-legend-item.is-primary .dot{ background:var(--orange); box-shadow:0 0 0 3px rgba(255,92,53,.18); }
+  .map-legend-item.is-low .dot{ background:#94a3b8; }
+
+  body.panel-open .node{ opacity:.42; }
+  body.panel-open .node--low{ opacity:.28; }
+  body.panel-open .node.is-active{ opacity:1; }
+  body.panel-open .node.is-active .disc{ transform:scale(1.08); box-shadow:0 0 0 5px color-mix(in srgb, var(--c) 22%, #fff), 0 16px 34px -14px color-mix(in srgb, var(--c) 65%, #0a2540); }
+
+  .hint{
+    position:absolute; left:50%; bottom:26px; transform:translateX(-50%);
+    display:inline-flex; align-items:center; gap:10px;
+    font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-mute);
+    background:rgba(255,255,255,.7); backdrop-filter:blur(6px);
+    border:1px solid var(--line); padding:8px 15px; border-radius:999px;
+    transition:opacity .3s;
+  }
+  .hint .tap{ width:16px; height:16px; color:var(--orange); }
+  body.panel-open .hint{ opacity:0; }
+
+  /* ---------- panel ---------- */
+  .backdrop{ position:absolute; inset:0; background:rgba(10,37,64,.28); opacity:0; pointer-events:none; transition:opacity .4s; z-index:8; }
+  body.panel-open .backdrop{ opacity:0; }
+
+  .panel{
+    position:absolute; top:0; right:0; height:100%; width:var(--panel-w);
+    background:var(--paper);
+    box-shadow:-30px 0 60px -30px rgba(10,37,64,.4);
+    transform:translateX(102%);
+    transition:transform .5s var(--ease);
+    z-index:9; display:flex; flex-direction:column;
+    border-left:1px solid var(--line);
+  }
+  body.panel-open .panel{ transform:translateX(0); }
+
+  .panel-scroll{ overflow-y:auto; overflow-x:hidden; height:100%; scrollbar-width:thin; }
+  .panel-scroll::-webkit-scrollbar{ width:9px; }
+  .panel-scroll::-webkit-scrollbar-thumb{ background:var(--line); border-radius:999px; border:3px solid var(--paper); }
+
+  .panel-nav{
+    position:sticky; top:0; z-index:5;
+    display:flex; align-items:center; gap:8px;
+    padding:12px 14px; background:rgba(255,255,255,.86); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--line);
+  }
+  .pn-btn{
+    appearance:none; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink-soft);
+    width:34px; height:34px; border-radius:10px; display:grid; place-items:center;
+    transition:background .18s, color .18s, border-color .18s, transform .12s;
+  }
+  .pn-btn:hover{ background:var(--paper-2); color:var(--ink); }
+  .pn-btn:active{ transform:scale(.94); }
+  .pn-btn svg{ width:17px; height:17px; }
+  .pn-here{ flex:1; text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-mute); }
+  .pn-close{ margin-left:auto; }
+
+  /* hero band */
+  .hero{
+    position:relative; overflow:hidden; padding:26px clamp(20px,3vw,34px) 24px;
+    background:
+      radial-gradient(120% 130% at 88% -10%, color-mix(in srgb, var(--c) 26%, #fff), transparent 60%),
+      linear-gradient(180deg, color-mix(in srgb, var(--c) 12%, #fff), #fff);
+    border-bottom:1px solid var(--line);
+  }
+  .hero .web-motif{ position:absolute; inset:0; color:var(--c); opacity:.14; pointer-events:none; }
+  .hero-eyebrow{
+    font-family:var(--mono); font-size:11px; letter-spacing:.16em; text-transform:uppercase;
+    color:color-mix(in srgb, var(--c) 72%, #0a2540); display:inline-flex; align-items:center; gap:8px; margin-bottom:12px;
+    position:relative;
+  }
+  .hero-eyebrow .chip{ width:9px; height:9px; border-radius:3px; background:var(--c); }
+  .hero-top{ display:flex; align-items:flex-start; gap:16px; justify-content:space-between; position:relative; }
+  .hero h2{ font-family:var(--display); font-weight:700; color:var(--ink); font-size:clamp(24px,3.6vw,32px); letter-spacing:-.025em; margin:0 0 8px; line-height:1.05; }
+  .hero .tag{ font-size:15px; line-height:1.5; color:var(--ink-soft); max-width:34ch; margin:0; }
+  .hero-art{ flex:0 0 auto; width:clamp(120px,20vw,168px); color:var(--c); }
+  .hero-art svg{ width:100%; height:auto; display:block; }
+
+  /* lineage strip */
+  .flow{ padding:22px clamp(20px,3vw,34px) 6px; }
+  .flow-label{ font-family:var(--mono); font-size:11px; letter-spacing:.13em; text-transform:uppercase; color:var(--ink-mute); margin-bottom:14px; display:flex; align-items:center; gap:8px; }
+  .lc-crossref{ display:flex; align-items:center; flex-wrap:wrap; gap:8px; padding:18px clamp(20px,3vw,34px) 0; }
+  .lc-crossref-label{ font-family:var(--mono); font-size:10.5px; letter-spacing:.05em; color:var(--ink-mute); margin-right:2px; }
+  .lc-crossref-tag{ font-family:var(--body); font-weight:600; font-size:11.5px; color:#fff; background:var(--c); padding:4px 11px; border-radius:999px; }
+  .priority-badge{
+    display:inline-flex; margin:16px clamp(20px,3vw,34px) 0; padding:7px 14px; border-radius:999px;
+    font-size:12px; font-weight:600; color:var(--ink-soft); background:var(--paper-2); border:1px solid var(--line);
+  }
+  .priority-badge.is-primary{ color:#fff; background:linear-gradient(135deg,#ff7a55,var(--orange) 60%,var(--orange-deep)); border:none; }
+  .priority-badge.is-low{ color:var(--ink-mute); background:transparent; border-style:dashed; }
+
+  .medallion-note{
+    display:flex; align-items:center; gap:9px; margin:12px clamp(20px,3vw,34px) 0; padding:9px 13px;
+    background:var(--paper-2); border:1px solid var(--line); border-radius:10px;
+    font-size:12px; line-height:1.4; color:var(--ink-soft);
+  }
+  .medallion-tier{
+    flex:0 0 auto; font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.03em; color:#fff;
+    background:color-mix(in srgb, var(--c, #94a3b8) 85%, #0a2540); padding:4px 8px; border-radius:6px; white-space:nowrap;
+  }
+  .flow-label svg{ width:14px; height:14px; color:var(--c); }
+  .flow-track{ position:relative; display:flex; align-items:center; }
+  .flow-line{ position:absolute; left:6%; right:6%; top:19px; height:2px; background:var(--thread); border-radius:2px; }
+  .flow-packet{ position:absolute; top:15px; width:10px; height:10px; border-radius:50%; background:var(--c); box-shadow:0 0 0 4px color-mix(in srgb, var(--c) 22%, transparent); animation:flow 3.4s var(--ease) infinite; }
+  @keyframes flow{ 0%{ left:3%; opacity:0 } 12%{ opacity:1 } 88%{ opacity:1 } 100%{ left:96%; opacity:0 } }
+  .flow-node{ position:relative; z-index:1; flex:1; display:flex; flex-direction:column; align-items:center; gap:9px; text-align:center; }
+  .flow-dot{ width:38px; height:38px; border-radius:11px; background:#fff; border:1.5px solid var(--line); display:grid; place-items:center; color:var(--ink-mute); box-shadow:var(--shadow-soft); }
+  .flow-dot svg{ width:18px; height:18px; }
+  .flow-node.on .flow-dot{ background:var(--c); border-color:var(--c); color:#fff; transform:scale(1.14); box-shadow:0 12px 22px -10px color-mix(in srgb, var(--c) 60%, #0a2540); }
+  .flow-node small{ font-family:var(--body); font-size:11px; font-weight:500; line-height:1.25; color:var(--ink-mute); max-width:11ch; }
+  .flow-node.on small{ color:var(--ink); font-weight:600; }
+
+  /* sections */
+  .sec{ padding:22px clamp(20px,3vw,34px); border-top:1px solid var(--line); }
+  .sec:first-of-type{ border-top:0; }
+  .sec-h{ display:flex; align-items:center; gap:11px; margin-bottom:16px; }
+  .sec-h .n{ font-family:var(--mono); font-size:11px; color:#fff; background:var(--c); width:22px; height:22px; border-radius:7px; display:grid; place-items:center; font-weight:600; }
+  .sec-h h3{ font-family:var(--display); font-weight:600; font-size:16px; color:var(--ink); margin:0; letter-spacing:-.01em; }
+
+  /* personas */
+  .personas{ display:flex; flex-wrap:wrap; gap:10px; }
+  .persona{ display:flex; align-items:center; gap:10px; background:var(--paper-2); border:1px solid var(--line); border-radius:999px; padding:6px 14px 6px 6px; }
+  .persona .av{ width:32px; height:32px; border-radius:50%; background:color-mix(in srgb, var(--c) 14%, #fff); color:var(--c); display:grid; place-items:center; flex:0 0 auto; }
+  .persona .av svg{ width:17px; height:17px; }
+  .persona span{ font-size:13.5px; font-weight:500; color:var(--ink); }
+
+  .do-text{ font-size:14.5px; line-height:1.62; color:var(--ink-soft); margin:0; }
+
+  /* care cards */
+  .cares{ display:grid; gap:10px; }
+  .care{ display:flex; align-items:flex-start; gap:13px; padding:13px 15px; background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:var(--shadow-soft); }
+  .care .ci{ flex:0 0 auto; width:34px; height:34px; border-radius:10px; background:color-mix(in srgb, var(--c) 12%, #fff); color:var(--c); display:grid; place-items:center; }
+  .care .ci svg{ width:18px; height:18px; }
+  .care p{ margin:0; font-size:14px; line-height:1.5; color:var(--ink); align-self:center; }
+
+  /* dbt mapping */
+  .maps{ display:grid; gap:12px; }
+  .map-row{
+    display:grid; grid-template-columns:1fr auto 1.15fr; align-items:center; gap:10px;
+    padding:13px; border:1px solid var(--line); border-radius:14px; background:var(--paper-2);
+  }
+  .map-care{ display:flex; align-items:center; gap:9px; font-size:13px; color:var(--ink-soft); }
+  .map-care svg{ width:15px; height:15px; color:var(--ink-mute); flex:0 0 auto; }
+  .map-arrow{ color:var(--c); display:grid; place-items:center; }
+  .map-arrow svg{ width:18px; height:18px; }
+  .map-cap{ background:#fff; border:1px solid color-mix(in srgb, var(--c) 30%, var(--line)); border-radius:11px; padding:9px 11px; }
+  .cap-name{ display:inline-flex; align-items:center; gap:7px; font-family:var(--display); font-weight:600; font-size:12.5px; color:var(--ink); margin-bottom:2px; }
+  .cap-name .cd{ width:22px; height:22px; border-radius:7px; background:color-mix(in srgb, var(--c) 14%, #fff); color:var(--c); display:grid; place-items:center; flex:0 0 auto; }
+  .cap-name .cd svg{ width:13px; height:13px; }
+  .cap-name b{ color:var(--c); font-weight:600; }
+  .cap-detail{ font-size:12px; line-height:1.45; color:var(--ink-soft); }
+
+  /* pitches (speech bubbles) */
+  .pitches{ display:grid; gap:14px; }
+  .pitch{ position:relative; }
+  .pitch .who{ font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--orange-deep); margin:0 0 7px 4px; display:flex; align-items:center; gap:7px; }
+  .pitch .who svg{ width:13px; height:13px; }
+  .bubble{
+    position:relative; background:linear-gradient(180deg,#fff,var(--orange-tint)); border:1.5px solid color-mix(in srgb, var(--orange) 30%, var(--line));
+    border-radius:16px 16px 16px 5px; padding:14px 16px; font-size:14.5px; line-height:1.55; color:var(--ink);
+    box-shadow:var(--shadow-soft);
+  }
+  .bubble::before{ content:"“"; position:absolute; top:2px; left:9px; font-family:var(--display); font-size:26px; color:var(--orange); opacity:.35; }
+  .bubble em{ font-style:normal; font-weight:600; color:var(--orange-deep); }
+
+  .panel-end{ padding:20px clamp(20px,3vw,34px) 40px; text-align:center; }
+  .panel-end .rule{ height:1px; background:var(--line); margin-bottom:16px; }
+  .panel-end p{ font-family:var(--mono); font-size:11px; letter-spacing:.05em; color:var(--ink-mute); margin:0; line-height:1.6; }
+
+  /* ---------- responsive ---------- */
+  @media (max-width: 900px){
+    :root{ --panel-w:100%; }
+    .panel{ top:auto; bottom:0; height:88vh; width:100%; border-left:0; border-top:1px solid var(--line); border-radius:22px 22px 0 0; transform:translateY(103%); box-shadow:0 -24px 50px -24px rgba(10,37,64,.4); }
+    body.panel-open .panel{ transform:translateY(0); }
+    body.panel-open .backdrop{ opacity:1; pointer-events:auto; }
+    .panel-nav{ border-radius:22px 22px 0 0; }
+    .hero-art{ width:96px; }
+    .map-row{ grid-template-columns:1fr; gap:8px; }
+    .map-arrow{ transform:rotate(90deg); justify-self:start; }
+  }
+  @media (max-width: 900px) and (min-width: 561px){
+    .hero-top .kicker{ display:inline; }
+  }
+  @media (max-width:560px){
+    .brand .kicker{ display:none; }
+    .acct span.name{ } 
+    .reset{ display:none; }
+    .hint{ font-size:11px; bottom:16px; }
+    .hero-subtitle{ font-size:13px; }
+    .section-head h2{ font-size:20px; }
+    .lc-wrap{ border-radius:18px; margin:14px auto 24px; padding:26px 16px 30px; }
+  }
+
+  @media (prefers-reduced-motion: reduce){
+    *{ animation:none !important; transition-duration:.001ms !important; }
+    .stage-inner{ transition:none !important; }
+  }
+
+  /* ---------- subnav (view switch, lives inside the hero) ---------- */
+  .subnav{
+    display:inline-flex; align-items:center; justify-content:center; gap:4px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16);
+    border-radius:999px; padding:4px; position:relative; z-index:1;
+  }
+  .tab{
+    appearance:none; cursor:pointer; border:0; background:transparent; color:rgba(255,255,255,.7);
+    font-family:var(--body); font-weight:600; font-size:13px; padding:9px 20px; border-radius:999px;
+    transition:background .18s, color .18s;
+  }
+  .tab:hover:not(.is-on){ color:#fff; }
+  .tab.is-on{ background:#fff; color:var(--ink); }
+
+  /* ---------- lifecycle (tabbed dev workflow) ---------- */
+  .lifecycle{ position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .5s var(--ease) .05s; overflow-y:auto; }
+  body.is-map.view-lifecycle .lifecycle{ opacity:1; pointer-events:auto; }
+
+  .whynow{ position:absolute; inset:0; opacity:0; pointer-events:none; transition:opacity .5s var(--ease) .05s; overflow-y:auto; }
+  body.is-map.view-whynow .whynow{ opacity:1; pointer-events:auto; }
+  .wn-stat{ text-align:center; margin-bottom:16px; }
+  .wn-stat b{ display:block; font-family:var(--display); font-weight:700; font-size:50px; color:var(--c); letter-spacing:-.02em; line-height:1; }
+  .wn-stat span{ display:block; font-family:var(--mono); font-size:11.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-mute); margin-top:7px; }
+  #wnPartsTabs .part-tab.is-on{ background:var(--c); border-color:var(--c); }
+  .wn-journey{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; justify-content:center; }
+  .wn-journey .lc-chip{ width:186px; align-self:stretch; }
+  .wn-journey-arrow{ flex:0 0 auto; color:var(--ink-mute); }
+  .wn-journey-arrow svg{ width:16px; height:16px; display:block; }
+  .wn-talk{ max-width:640px; margin:32px auto 0; }
+  .wn-talk-title{
+    text-align:center; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--ink-mute); margin-bottom:14px;
+  }
+
+  .rcr-triangle-wrap{ text-align:center; margin-bottom:22px; }
+  .rcr-triangle-svg{ width:220px; height:auto; display:block; margin:0 auto; }
+  .rcr-tri-shape{ fill:none; stroke:var(--thread); stroke-width:1.6; stroke-dasharray:3 5; }
+  .rcr-tri-dot{ fill:var(--c); }
+  .rcr-tri-label{ font-family:var(--display); font-weight:700; font-size:13px; letter-spacing:-.01em; }
+  .rcr-triangle-cap{ margin:6px 0 0; font-size:11.5px; color:var(--ink-mute); max-width:280px; margin-left:auto; margin-right:auto; }
+
+  .persona-tabs{ display:flex; justify-content:center; gap:5px; flex-wrap:wrap; margin-bottom:16px; }
+  .persona-tab{
+    appearance:none; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink-soft);
+    font-family:var(--body); font-weight:700; font-size:12px; padding:8px 14px; border-radius:12px;
+    transition:background .18s, color .18s, border-color .18s; text-align:left; line-height:1.3;
+  }
+  .persona-tab span{ display:block; font-family:var(--mono); font-weight:500; font-size:9.5px; letter-spacing:.03em; text-transform:uppercase; opacity:.75; margin-top:1px; }
+  .persona-tab.is-on{ background:var(--c); border-color:var(--c); color:#fff; }
+  .persona-panels{ background:#fff; border:1px solid var(--line); border-radius:14px; padding:16px 20px; box-shadow:var(--shadow-soft); }
+  .persona-panel{ display:none; }
+  .persona-panel.is-on{ display:block; animation:lcFadeIn .3s var(--ease); }
+  .persona-roles{ font-family:var(--mono); font-size:10px; letter-spacing:.04em; color:var(--ink-mute); margin-bottom:8px; text-transform:uppercase; }
+  .persona-panel p{ margin:0; font-size:13px; line-height:1.6; color:var(--ink-soft); }
+
+  @media (max-width:900px){
+    .wn-journey{ flex-direction:column; }
+    .wn-journey .lc-chip{ width:100%; max-width:280px; }
+    .wn-journey-arrow svg{ transform:rotate(90deg); }
+  }
+
+  .lc-wrap{
+    max-width:1200px; margin:20px auto 40px; padding:36px clamp(16px,3vw,40px) 40px;
+    background:linear-gradient(135deg, var(--orange-tint), #fff 42%, #eef1ff 100%);
+    border:1px solid var(--line); border-radius:28px; box-shadow:var(--shadow);
+  }
+
+  .lc-parts-tabs{ display:flex; justify-content:center; gap:6px; flex-wrap:wrap; margin-bottom:26px; }
+  .part-tab{
+    appearance:none; cursor:pointer; border:1px solid var(--line); background:#fff; color:var(--ink-soft);
+    font-family:var(--body); font-weight:600; font-size:13.5px; padding:10px 20px; border-radius:999px;
+    transition:background .18s, color .18s, border-color .18s;
+  }
+  .part-tab:hover{ color:var(--ink); }
+  .part-tab.is-on{ background:var(--ink); border-color:var(--ink); color:#fff; }
+
+  .lc-panel{ display:none; }
+  .lc-panel.is-on{ display:block; animation:lcFadeIn .35s var(--ease); }
+  @keyframes lcFadeIn{ from{ opacity:0; transform:translateY(6px); } to{ opacity:1; transform:translateY(0); } }
+
+  .lc-panel-head{ text-align:center; margin-bottom:32px; }
+  .lc-panel-head h3{ font-family:var(--display); font-weight:700; font-size:24px; color:var(--ink); margin:0 0 4px; letter-spacing:-.01em; }
+  .lc-panel-head p{ margin:0; font-size:14.5px; color:var(--ink-soft); }
+
+  .lc-fusion-legend{
+    display:flex; align-items:center; justify-content:center; gap:7px; margin:0 0 20px;
+    font-family:var(--mono); font-size:11px; color:var(--ink-mute);
+  }
+  .lc-tools-row{ display:flex; gap:20px; flex-wrap:wrap; justify-content:center; align-items:stretch; }
+  .lc-tool{
+    width:238px; text-align:center; background:#fff; border:1px solid var(--line); border-radius:16px;
+    padding:20px 16px 18px; box-shadow:var(--shadow-soft); display:flex; flex-direction:column;
+  }
+  .lc-tool-d{ margin:10px 0 0; font-size:12.5px; line-height:1.5; color:var(--ink-soft); }
+  .lc-tool-feats{ margin-top:16px; padding-top:14px; border-top:1px solid var(--line); display:flex; flex-direction:column; gap:10px; text-align:left; }
+  .lc-tool-feat{ display:flex; align-items:flex-start; gap:8px; }
+  .lc-tool-feat b{ display:block; font-family:var(--display); font-weight:600; font-size:12px; color:var(--ink); letter-spacing:-.01em; }
+  .lc-tool-feat span{ display:block; font-size:11px; line-height:1.4; color:var(--ink-soft); margin-top:1px; }
+  .lc-fusion-dot{ flex:0 0 auto; width:8px; height:8px; border-radius:50%; margin-top:4px; background:var(--orange); box-shadow:0 0 0 3px rgba(255,92,53,.16); }
+  .lc-fusion-dot.is-off{ background:var(--thread); box-shadow:none; }
+
+  .lc-cat-filter{ display:flex; justify-content:center; gap:4px; margin-bottom:28px; }
+  .cat-tab{
+    appearance:none; cursor:pointer; border:1px solid var(--line); background:var(--paper-2); color:var(--ink-soft);
+    font-family:var(--body); font-weight:600; font-size:12.5px; padding:7px 16px; border-radius:999px;
+    transition:background .18s, color .18s, border-color .18s;
+  }
+  .cat-tab.is-on{ background:var(--ink); border-color:var(--ink); color:#fff; }
+  .cat-tab[data-cat]:not([data-cat="all"]).is-on{ background:var(--c); border-color:var(--c); color:#fff; }
+
+  .lc-stages-row{ display:flex; align-items:flex-start; gap:40px; flex-wrap:wrap; justify-content:center; }
+  .lc-stage-block{ display:flex; flex-direction:column; align-items:center; gap:22px; }
+  .lc-stage-block.has-desc{ gap:14px; }
+  .lc-stage-d{ margin:0; max-width:300px; text-align:center; font-size:13px; line-height:1.55; color:var(--ink-soft); }
+
+  .lc-illus-art{ color:var(--c); }
+  .lc-illus-art svg{ width:126px; height:auto; display:block; margin:0 auto; }
+  .lc-tool .lc-illus-art svg{ width:100%; max-width:206px; }
+  .lc-illus-label{ margin-top:8px; font-family:var(--display); font-weight:700; font-size:15px; color:var(--ink); letter-spacing:-.01em; text-align:center; }
+
+  .lc-feat-grid{ display:grid; grid-template-columns:repeat(2,164px); gap:10px; }
+
+  /* governance demos: RBAC access matrix + Mesh lineage/model grid, both toggle-based */
+  .gov-demos{ display:flex; flex-direction:column; gap:22px; align-items:center; margin-top:26px; }
+  .gov-demo{ width:100%; max-width:680px; background:#fff; border:1px solid var(--line); border-radius:18px; padding:22px 24px 26px; box-shadow:var(--shadow-soft); text-align:center; }
+  .gov-demo-title{ font-family:var(--display); font-weight:700; font-size:15px; color:var(--ink); margin:2px 0 6px; letter-spacing:-.01em; }
+  .gov-demo-sub{ margin:0 0 18px; font-size:12.5px; color:var(--ink-soft); }
+
+  .gov-toggle{ display:inline-flex; gap:3px; background:var(--paper-2); border:1px solid var(--line); border-radius:999px; padding:3px; margin-bottom:16px; }
+  .gov-toggle-btn{
+    appearance:none; cursor:pointer; border:0; background:transparent; color:var(--ink-soft);
+    font-family:var(--body); font-weight:600; font-size:11.5px; padding:6px 14px; border-radius:999px;
+    transition:background .18s, color .18s;
+  }
+  .gov-toggle-btn.is-on{ background:var(--ink); color:#fff; }
+
+  .gov-demo[data-state="with"] .state-without{ display:none; }
+  .gov-demo[data-state="without"] .state-with{ display:none; }
+
+  .rbac-matrix{ width:100%; border-collapse:separate; border-spacing:0; font-size:12px; }
+  .rbac-matrix th, .rbac-matrix td{ padding:9px 8px; border-bottom:1px solid var(--line); text-align:center; }
+  .rbac-matrix thead th{ font-family:var(--mono); font-size:10px; letter-spacing:.02em; color:var(--ink-mute); font-weight:600; }
+  .rbac-matrix tbody td:first-child{ text-align:left; font-family:var(--display); font-weight:600; color:var(--ink); font-size:12.5px; }
+  .rbac-matrix td.yes{ color:#22a06b; font-weight:700; font-size:14px; }
+  .rbac-matrix td.no{ color:#ef4444; font-weight:700; font-size:14px; }
+
+  .mesh-lineage-label, .mesh-models-label{ font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-mute); margin-bottom:12px; text-align:left; }
+  .mesh-lineage-outer{ overflow-x:auto; margin:0 0 10px; }
+  .mesh-lineage{ position:relative; margin:0 auto; }
+  .mesh-lineage-svg{ position:absolute; top:0; left:0; overflow:visible; }
+  .mesh-link{ stroke:var(--line); stroke-width:1.6; fill:none; }
+  .mesh-proj-abs{ position:absolute; }
+  .mesh-proj-card{
+    text-align:left; background:#fff; border:1px solid var(--line); border-left:3px solid var(--c); border-radius:10px;
+    padding:7px 10px; font-family:var(--display); font-weight:600; font-size:10.5px; line-height:1.28; color:var(--ink); box-shadow:var(--shadow-soft);
+    display:flex; flex-direction:column; justify-content:center;
+  }
+  .mesh-proj-tag{
+    display:inline-block; font-family:var(--mono); font-size:8.5px; font-weight:700; letter-spacing:.04em; color:var(--c);
+    background:color-mix(in srgb, var(--c) 14%, #fff); padding:2px 6px; border-radius:5px; margin-right:6px; vertical-align:middle;
+  }
+  .mesh-proj-cnt{ display:block; margin-top:4px; font-family:var(--mono); font-weight:500; font-size:9.5px; color:var(--ink-mute); text-transform:none; }
+  .mesh-contracts-note{ margin:12px 0 22px; font-size:11.5px; line-height:1.5; color:var(--ink-soft); text-align:left; }
+  .mesh-contracts-note b{ color:var(--ink); }
+
+  .mesh-models-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .mesh-model-card{ text-align:left; background:var(--paper-2); border:1px solid var(--line); border-radius:12px; padding:11px 13px; }
+  .mesh-model-top{ display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .mesh-model-top b{ font-family:var(--mono); font-size:11.5px; color:var(--ink); }
+  .mesh-model-badge{ font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.03em; }
+  .mesh-model-badge .state-with{ color:#22a06b; }
+  .mesh-model-badge .state-without{ color:var(--ink-mute); }
+  .mesh-model-card p{ margin:5px 0 7px; font-size:11px; line-height:1.4; color:var(--ink-soft); }
+  .mesh-model-owner{ display:inline-block; font-size:10px; font-weight:600; color:var(--c); }
+  .mesh-model-owner::before{ content:"\2022"; margin-right:4px; font-size:7px; vertical-align:middle; }
+
+  @media (max-width:900px){
+    .mesh-models-grid{ grid-template-columns:repeat(2,1fr); }
+    .rbac-matrix{ font-size:10.5px; }
+    .rbac-matrix th, .rbac-matrix td{ padding:7px 4px; }
+  }
+  @media (max-width:560px){
+    .mesh-models-grid{ grid-template-columns:1fr; }
+  }
+
+  .lc-chip{
+    position:relative; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px 14px;
+    box-shadow:var(--shadow-soft); transition:opacity .25s ease, transform .25s ease;
+  }
+  .lc-chip.is-dim{ opacity:.25; transform:scale(.97); }
+  .lc-chip.is-big{
+    grid-column:span 2; display:flex; align-items:flex-start; gap:12px; text-align:left;
+    border-color:color-mix(in srgb, var(--c) 40%, var(--line)); background:color-mix(in srgb, var(--c) 5%, #fff);
+    box-shadow:0 12px 26px -16px color-mix(in srgb, var(--c) 55%, #0a2540);
+  }
+  .lc-chip.is-big .ci{ margin-bottom:0; flex:0 0 auto; }
+  .lc-chip.is-big .chip-body{ flex:1; }
+  .lc-chip-tag{
+    position:absolute; top:-8px; right:10px; font-family:var(--mono); font-size:9px; font-weight:700; letter-spacing:.06em;
+    text-transform:uppercase; color:#fff; background:var(--c); padding:2px 7px; border-radius:999px;
+  }
+  .lc-chip .ci{
+    width:26px; height:26px; border-radius:8px; margin-bottom:8px;
+    background:color-mix(in srgb, var(--c) 14%, #fff); color:var(--c); display:grid; place-items:center;
+  }
+  .lc-chip .ci svg{ width:14px; height:14px; }
+  .lc-chip b{ display:block; font-family:var(--display); font-weight:600; font-size:12.5px; color:var(--ink); margin-bottom:3px; letter-spacing:-.01em; }
+  .lc-chip span{ display:block; font-size:11px; line-height:1.4; color:var(--ink-soft); }
+
+  .lc-compare{ max-width:640px; margin:36px auto 0; }
+  .lc-compare-title{
+    text-align:center; font-family:var(--display); font-weight:700; font-size:15px; color:var(--ink);
+    margin-bottom:14px; letter-spacing:-.01em;
+  }
+  .lc-compare-grid{
+    display:grid; grid-template-columns:120px 1fr 1fr; gap:1px;
+    background:var(--line); border:1px solid var(--line); border-radius:14px; overflow:hidden;
+  }
+  .lc-compare-grid > span{ background:#fff; padding:11px 14px; font-size:12px; line-height:1.4; }
+  .lc-compare-h{ font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-mute); font-weight:600; }
+  .lc-compare-h-dbt{ color:var(--orange-deep); }
+  .lc-compare-label{ font-family:var(--display); font-weight:700; color:var(--ink); font-size:12px; }
+  .lc-compare-basic{ color:var(--ink-mute); }
+  .lc-compare-dbt{ color:var(--ink); font-weight:500; display:flex; align-items:flex-start; gap:6px; background:color-mix(in srgb, var(--orange) 6%, #fff) !important; }
+  .lc-compare-dbt svg{ width:13px; height:13px; flex:0 0 auto; margin-top:1px; color:var(--orange-deep); }
+
+  /* intro definition */
+  .lc-intro{ max-width:620px; margin:4px auto 40px; text-align:center; }
+  .lc-intro-eyebrow{
+    font-family:var(--mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase;
+    color:var(--orange-deep); margin-bottom:12px;
+  }
+  .lc-intro-text{ margin:0; font-size:17px; line-height:1.62; color:var(--ink); }
+
+  /* raw sources -> dbt on platform -> data products */
+  .lc-story-line{ display:flex; align-items:flex-start; justify-content:center; gap:0; max-width:760px; margin:0 auto; }
+  .lc-story-node{ display:flex; flex-direction:column; align-items:center; gap:8px; width:118px; text-align:center; flex:0 0 auto; padding-top:16px; }
+  .lc-story-track{
+    flex:1; min-width:36px; height:2px; margin:34px 4px 0;
+    background:repeating-linear-gradient(90deg, var(--thread) 0 6px, transparent 6px 11px);
+  }
+
+  .lc-dbt-node{
+    appearance:none; cursor:pointer; border:0; background:none; padding:16px 8px 0; margin:0 4px;
+    display:flex; flex-direction:column; align-items:center; flex:0 0 auto;
+    transition:transform .2s var(--ease);
+  }
+  .lc-dbt-node:hover{ transform:translateY(-3px); }
+  .lc-dbt-badge{
+    font-family:var(--display); font-weight:700; font-size:19px; color:#fff; letter-spacing:-.01em;
+    background:linear-gradient(155deg,#ff7a55,var(--orange) 55%,var(--orange-deep));
+    padding:9px 26px; border-radius:14px 14px 3px 3px; box-shadow:0 12px 24px -10px rgba(255,92,53,.55);
+    position:relative; z-index:2;
+  }
+  .lc-dbt-platform-bar{
+    font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:#fff;
+    background:#0a2540; padding:7px 20px 6px; border-radius:3px 3px 11px 11px; margin-top:-3px; z-index:1;
+  }
+  .lc-dbt-sub{ margin-top:11px; font-size:11px; color:var(--ink-mute); font-family:var(--mono); white-space:nowrap; }
+  .lc-dbt-cta{ margin-top:9px; display:inline-flex; align-items:center; gap:5px; font-size:12.5px; font-weight:600; color:var(--orange-deep); }
+  .lc-dbt-cta svg{ width:13px; height:13px; transition:transform .18s var(--ease); }
+  .lc-dbt-node:hover .lc-dbt-cta svg{ transform:translateX(3px); }
+  .lc-dbt-node.is-active .lc-dbt-cta{ opacity:.45; }
+
+  .lc-tabs-reveal{
+    max-height:0; opacity:0; overflow:hidden;
+    transition:max-height .7s cubic-bezier(.22,.68,.24,1), opacity .5s ease .15s;
+  }
+  .lc-tabs-reveal.is-open{ opacity:1; }
+  .lc-tabs-reveal .lc-parts-tabs{ margin-top:34px; }
+
+  @media (max-width:900px){
+    .lc-feat-grid{ grid-template-columns:repeat(2,140px); }
+    .lc-tool{ width:100%; max-width:280px; padding:18px 14px; }
+    .lc-tool .lc-illus-art svg{ max-width:180px; }
+    .lc-illus-art svg{ width:98px; }
+    .lc-panel-head h3{ font-size:19px; }
+    .part-tab{ padding:8px 14px; font-size:12px; }
+    .lc-intro-text{ font-size:15px; }
+    .lc-story-line{ max-width:100%; }
+    .lc-story-node{ width:88px; }
+    .lc-dbt-badge{ font-size:16px; padding:8px 18px; }
+    .lc-dbt-sub{ display:none; }
+  }
+</style>
+</head>
+<body class="is-map view-lifecycle">
+  <div class="bg"><div class="dots"></div></div>
+
+  <div class="app">
+    <!-- hero -->
+    <header class="hero-top">
+      <div class="hero-util">
+        <div class="brand">
+          <span class="mark">dbt</span>
+          <span class="sep"></span>
+          <span class="kicker">field guide</span>
+        </div>
+        <div class="spacer"></div>
+        <div class="acct"><span class="dot"></span><span class="name">Northwind Corp · enterprise account</span></div>
+        <button class="reset" id="reset" type="button">Reset view</button>
+      </div>
+      <div class="hero-main">
+        <h1 class="hero-title">The dbt field guide</h1>
+        <p class="hero-subtitle">How an enterprise account is organized, and how a change moves from raw data to a trusted product.</p>
+        <nav class="subnav" id="subnav">
+          <button class="tab is-on" type="button" data-view="lifecycle">Dev lifecycle</button>
+          <button class="tab" type="button" data-view="teams">Account map</button>
+          <button class="tab" type="button" data-view="whynow">Use Cases</button>
+        </nav>
+      </div>
+    </header>
+
+    <div class="section-head">
+      <h2 id="sectionTitle"></h2>
+      <p id="sectionCaption"></p>
+    </div>
+
+    <div class="stage-wrap">
+      <!-- map -->
+      <section class="map" id="map">
+        <div class="map-legend">
+          <span class="map-legend-item is-primary"><span class="dot"></span>Primary contact — talk to them first</span>
+          <span class="map-legend-item"><span class="dot"></span>Secondary — valuable context, usually via Canvas</span>
+          <span class="map-legend-item is-low"><span class="dot"></span>Not a priority — DS/AI/ML</span>
+        </div>
+        <div class="stage" id="stage">
+          <div class="stage-inner" id="stageInner">
+            <svg class="web" id="web" aria-hidden="true"></svg>
+            <div class="nodes" id="nodes"></div>
+          </div>
+        </div>
+        <div class="hint">
+          <svg class="tap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11V6a2 2 0 1 1 4 0v5"/><path d="M13 7a2 2 0 0 1 4 0v6"/><path d="M17 9a2 2 0 0 1 4 0v6a6 6 0 0 1-6 6h-2a6 6 0 0 1-5.2-3l-2.3-4a2 2 0 0 1 3.4-2l1.1 1.6"/></svg>
+          Click any card to open its profile
+        </div>
+      </section>
+
+      <!-- lifecycle -->
+      <section class="lifecycle" id="lifecycle">
+        <div class="lc-wrap">
+          <div class="lc-intro">
+            <div class="lc-intro-eyebrow">What's a data product?</div>
+            <p class="lc-intro-text">A data product is a dataset built to be used — owned by a team, documented, tested, and backed by a contract, so other teams can build on it without asking permission first.</p>
+          </div>
+
+          <div class="lc-story-line">
+            <div class="lc-story-node">
+              <div class="lc-illus-art" id="lcSourcesArt"></div>
+              <div class="lc-illus-label">Raw sources</div>
+            </div>
+            <div class="lc-story-track"></div>
+            <button class="lc-dbt-node" id="lcDbtNode" type="button" aria-expanded="false">
+              <span class="lc-dbt-badge">dbt</span>
+              <span class="lc-dbt-platform-bar">Data Platform</span>
+              <span class="lc-dbt-sub">Snowflake · BigQuery · Databricks · and more</span>
+              <span class="lc-dbt-cta">See how it works
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+              </span>
+            </button>
+            <div class="lc-story-track"></div>
+            <div class="lc-story-node">
+              <div class="lc-illus-art" id="lcProductsArt"></div>
+              <div class="lc-illus-label">Data products</div>
+            </div>
+          </div>
+
+          <div class="lc-tabs-reveal" id="lcTabsReveal">
+            <div class="lc-parts-tabs" id="lcPartsTabs"></div>
+            <div class="lc-part-panels" id="lcPartPanels"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- use cases -->
+      <section class="whynow" id="whynow">
+        <div class="lc-wrap">
+          <div class="lc-intro">
+            <div class="lc-intro-eyebrow">Where dbt shows up</div>
+            <p class="lc-intro-text">dbt shows up in a handful of recurring situations — from migrating off legacy pipelines to scaling AI safely. Same lifecycle every time, just applied differently.</p>
+          </div>
+
+          <div class="lc-story-line">
+            <div class="lc-story-node">
+              <div class="lc-illus-art" id="wnOldArt"></div>
+              <div class="lc-illus-label">Wherever you start</div>
+            </div>
+            <div class="lc-story-track"></div>
+            <button class="lc-dbt-node" id="wnDbtNode" type="button" aria-expanded="false">
+              <span class="lc-dbt-badge">dbt</span>
+              <span class="lc-dbt-platform-bar">One lifecycle</span>
+              <span class="lc-dbt-sub">Migration · Consistency · Mesh · AI · Self-serve</span>
+              <span class="lc-dbt-cta">See how
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="13 6 19 12 13 18"/></svg>
+              </span>
+            </button>
+            <div class="lc-story-track"></div>
+            <div class="lc-story-node">
+              <div class="lc-illus-art" id="wnNewArt"></div>
+              <div class="lc-illus-label">One trusted platform</div>
+            </div>
+          </div>
+
+          <div class="lc-tabs-reveal" id="wnTabsReveal">
+            <div class="lc-parts-tabs" id="wnPartsTabs"></div>
+            <div class="lc-part-panels" id="wnPartPanels"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- panel -->
+      <div class="backdrop" id="backdrop"></div>
+      <aside class="panel" id="panel" role="dialog" aria-modal="false" aria-labelledby="panelTitle">
+        <div class="panel-nav">
+          <button class="pn-btn" id="prev" type="button" aria-label="Previous">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button class="pn-btn" id="next" type="button" aria-label="Next">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <div class="pn-here" id="here">team profile</div>
+          <button class="pn-btn pn-close" id="close" type="button" aria-label="Close profile">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="panel-scroll" id="panelBody"></div>
+      </aside>
+    </div>
+  </div>
+
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- icon library ---------------- */
+  function ic(inner){ return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'+inner+'</svg>'; }
+  const I = {
+    hub:      ic('<circle cx="12" cy="12" r="3"/><circle cx="12" cy="4" r="1.6"/><circle cx="12" cy="20" r="1.6"/><circle cx="4.5" cy="8" r="1.6"/><circle cx="19.5" cy="8" r="1.6"/><circle cx="4.5" cy="16" r="1.6"/><circle cx="19.5" cy="16" r="1.6"/><path d="M12 9V5.6M12 15v3.4M9.4 10.6 6 8.9M14.6 10.6 18 8.9M9.4 13.4 6 15.1M14.6 13.4 18 15.1"/>'),
+    shield:   ic('<path d="M12 3 5 6v5c0 4.2 2.9 7.4 7 9 4.1-1.6 7-4.8 7-9V6l-7-3Z"/><path d="M9.2 12l2 2 3.6-3.8"/>'),
+    check:    ic('<path d="M12 3 5 6v5c0 4.2 2.9 7.4 7 9 4.1-1.6 7-4.8 7-9V6l-7-3Z"/><path d="M9.2 12l2 2 3.6-3.8"/>'),
+    clock:    ic('<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>'),
+    coins:    ic('<ellipse cx="9" cy="7" rx="5" ry="2.4"/><path d="M4 7v4c0 1.3 2.2 2.4 5 2.4s5-1.1 5-2.4V7"/><ellipse cx="15" cy="14" rx="5" ry="2.4"/><path d="M10 14v3c0 1.3 2.2 2.4 5 2.4s5-1.1 5-2.4v-3"/>'),
+    link:     ic('<path d="M10 13.5a4 4 0 0 0 5.7.3l2.3-2.3a4 4 0 0 0-5.6-5.7l-1.3 1.3"/><path d="M14 10.5a4 4 0 0 0-5.7-.3L6 12.5a4 4 0 0 0 5.6 5.7l1.3-1.3"/>'),
+    layers:   ic('<path d="M12 3 3 8l9 5 9-5-9-5Z"/><path d="M3 13l9 5 9-5"/><path d="M3 8v5M21 8v5"/>'),
+    target:   ic('<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="4.5"/><circle cx="12" cy="12" r="1"/>'),
+    gauge:    ic('<path d="M4 15a8 8 0 1 1 16 0"/><path d="M12 15l4-4"/><circle cx="12" cy="15" r="1.4"/>'),
+    users:    ic('<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3 3 0 0 1 0 5.8"/><path d="M17 13.6a5.4 5.4 0 0 1 3.5 5.4"/>'),
+    spark:    ic('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="M18.5 4.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8L16 7l1.8-.7.7-1.8Z"/>'),
+    flask:    ic('<path d="M9 3h6"/><path d="M10 3v6l-4.5 8A2 2 0 0 0 7.3 20h9.4a2 2 0 0 0 1.8-3L14 9V3"/><path d="M7.7 15h8.6"/>'),
+    mega:     ic('<path d="M4 10v4a1 1 0 0 0 1 1h2l7 4V5l-7 4H5a1 1 0 0 0-1 1Z"/><path d="M18 8a5 5 0 0 1 0 8"/>'),
+    box:      ic('<path d="M12 3 4 7v9l8 4 8-4V7l-8-4Z"/><path d="M4 7l8 4 8-4M12 11v9"/>'),
+    funnel:   ic('<path d="M3 5h18l-7 8v6l-4-2v-4L3 5Z"/>'),
+    ruler:    ic('<rect x="3.5" y="8" width="17" height="8" rx="1.6" transform="rotate(45 12 12)"/><path d="M9 9l1.2 1.2M11.5 6.5l1.2 1.2M14 4l1.2 1.2M6.5 11.5l1.2 1.2"/>'),
+    wrench:   ic('<path d="M15.5 4.5a4.5 4.5 0 0 0-5.9 5.6L4 15.7 8.3 20l5.6-5.6a4.5 4.5 0 0 0 5.6-5.9l-2.8 2.8-2.2-.6-.6-2.2 2.6-2.8Z"/>'),
+    bars:     ic('<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>'),
+    chip:     ic('<rect x="6" y="6" width="12" height="12" rx="2.5"/><rect x="9.5" y="9.5" width="5" height="5" rx="1"/><path d="M9 3v2M15 3v2M9 19v2M15 19v2M3 9h2M3 15h2M19 9h2M19 15h2"/>'),
+    ledger:   ic('<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 8h6M9 12h6M9 16h3"/>'),
+    route:    ic('<circle cx="6" cy="6" r="2.2"/><circle cx="18" cy="18" r="2.2"/><path d="M8 6h6a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h5"/>'),
+    deal:     ic('<circle cx="12" cy="12" r="8.5"/><path d="M14.5 9.2c-.5-.9-1.5-1.4-2.6-1.4-1.5 0-2.5.8-2.5 2 0 2.6 5.5 1.4 5.5 4.2 0 1.2-1.1 2-2.7 2-1.3 0-2.4-.6-2.9-1.6"/><path d="M12 6.4v1.4M12 16.2v1.4"/>'),
+    doc:      ic('<path d="M7 3h7l4 4v14H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/><path d="M14 3v4h4M9 12h6M9 16h6"/>'),
+    branch:   ic('<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="8" r="2"/><path d="M6 8v8"/><path d="M18 10a6 6 0 0 1-6 6H8"/>'),
+    alert:    ic('<path d="M12 4 3 19h18L12 4Z"/><path d="M12 10v4M12 17h.01"/>'),
+    repeat:   ic('<path d="M4 9a8 8 0 0 1 13.6-3.6L20 8"/><path d="M20 4v4h-4"/><path d="M20 15a8 8 0 0 1-13.6 3.6L4 16"/><path d="M4 20v-4h4"/>'),
+    db:       ic('<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/>'),
+    grid:     ic('<rect x="4" y="4" width="7" height="7" rx="1.4"/><rect x="13" y="4" width="7" height="7" rx="1.4"/><rect x="4" y="13" width="7" height="7" rx="1.4"/><rect x="13" y="13" width="7" height="7" rx="1.4"/>'),
+    arrow:    ic('<line x1="4" y1="12" x2="18" y2="12"/><polyline points="13 7 19 12 13 17"/>'),
+    quote:    ic('<path d="M7 7c-2 1-3 3-3 5v5h5v-5H6c0-1.5.6-2.8 2-3.5L7 7Zm10 0c-2 1-3 3-3 5v5h5v-5h-3c0-1.5.6-2.8 2-3.5L17 7Z"/>'),
+    terminal: ic('<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3.2 3L7 15"/><path d="M12.5 15H17"/>'),
+    code:     ic('<polyline points="9 7 4 12 9 17"/><polyline points="15 7 20 12 15 17"/>'),
+    merge:    ic('<circle cx="6" cy="6" r="2"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><path d="M6 8v6a2 2 0 0 0 2 2h8"/><path d="M18 16v-3a6 6 0 0 0-6-6H10"/>'),
+    key:      ic('<circle cx="8" cy="15" r="4.2"/><path d="M11 12l9-9"/><path d="M16 7l3 3"/><path d="M13 10l2.5 2.5"/>'),
+    network:  ic('<circle cx="12" cy="5" r="2.2"/><circle cx="5" cy="18" r="2.2"/><circle cx="19" cy="18" r="2.2"/><path d="M12 7.2V12M12 12 6.2 16.4M12 12l5.8 4.4"/>'),
+    eye:      ic('<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3.2"/>'),
+    search:   ic('<circle cx="10.5" cy="10.5" r="6.5"/><path d="M20 20 15.2 15.2"/>')
+  };
+
+  /* ---------------- hero illustrations ---------------- */
+  const NAVY = "#0a2540";
+  const HERO = {
+    central:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<g stroke="currentColor" stroke-width="1.4" opacity=".5">'+
+      '<path d="M90 75 L40 38 M90 75 L145 40 M90 75 L36 108 M90 75 L150 110 M90 75 L90 26 M90 75 L90 128"/></g>'+
+      '<circle cx="40" cy="38" r="9" fill="currentColor" fill-opacity=".16"/><circle cx="145" cy="40" r="9" fill="currentColor" fill-opacity=".16"/>'+
+      '<circle cx="36" cy="108" r="9" fill="currentColor" fill-opacity=".16"/><circle cx="150" cy="110" r="9" fill="currentColor" fill-opacity=".16"/>'+
+      '<circle cx="90" cy="26" r="8" fill="currentColor" fill-opacity=".16"/><circle cx="90" cy="128" r="8" fill="currentColor" fill-opacity=".16"/>'+
+      '<g transform="translate(90 75)"><circle r="24" fill="currentColor"/><path d="M0 -13 -11 -8 -11 3 C-11 10 -6 15 0 17 C6 15 11 10 11 3 L11 -8 Z" fill="#fff" fill-opacity=".22"/><path d="M-5 1 -2 4 5 -4" stroke="#fff" stroke-width="2.2" fill="none"/></g>'+
+      '</svg>',
+    dataeng:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<circle cx="35" cy="40" r="8" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.5"/>'+
+      '<circle cx="35" cy="75" r="8" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.5"/>'+
+      '<circle cx="35" cy="110" r="8" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.5"/>'+
+      '<path d="M43 40 Q75 40 75 75 Q75 75 43 75" stroke="currentColor" stroke-width="1.6" fill="none"/>'+
+      '<path d="M43 110 Q75 110 75 75" stroke="currentColor" stroke-width="1.6" fill="none"/>'+
+      '<rect x="75" y="60" width="42" height="30" rx="6" fill="currentColor" fill-opacity=".26" stroke="currentColor" stroke-width="1.7"/>'+
+      '<path d="M85 70 H107 M85 78 H99" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity=".6"/>'+
+      '<path d="M117 75 H150" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'+
+      '<path d="M144 69 L150 75 L144 81" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '</svg>',
+    marketing:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<path d="M28 70 L96 70 L118 54 L118 92 L96 78 L28 78 Z" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M118 62 C132 62 132 84 118 84" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M40 118 L64 96 L86 108 L120 74 L152 40" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'+
+      '<circle cx="64" cy="96" r="3.4" fill="currentColor"/><circle cx="86" cy="108" r="3.4" fill="currentColor"/><circle cx="120" cy="74" r="3.4" fill="currentColor"/>'+
+      '<path d="M152 40 l-9 1 4 -8 Z" fill="currentColor"/>'+
+      '<circle cx="30" cy="52" r="4" fill="currentColor" fill-opacity=".4"/><circle cx="150" cy="112" r="4" fill="currentColor" fill-opacity=".4"/>'+
+      '</svg>',
+    finance:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<rect x="34" y="86" width="20" height="34" rx="3" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.6"/>'+
+      '<rect x="62" y="66" width="20" height="54" rx="3" fill="currentColor" fill-opacity=".3" stroke="currentColor" stroke-width="1.6"/>'+
+      '<rect x="90" y="46" width="20" height="74" rx="3" fill="currentColor" fill-opacity=".45" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M30 120 L124 120" stroke="currentColor" stroke-width="1.8"/>'+
+      '<circle cx="132" cy="52" r="18" fill="#fff" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M132 42 v20 M127 46 c0-2 2-3 5-3s5 1 5 3-2 3-5 3-5 1-5 3 2 3 5 3 5-1 5-3" stroke="currentColor" stroke-width="1.8" fill="none"/>'+
+      '</svg>',
+    supply:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<path d="M40 60 L58 50 L76 60 L58 70 Z" fill="currentColor" fill-opacity=".3" stroke="currentColor" stroke-width="1.5"/>'+
+      '<path d="M40 60 L40 82 L58 92 L58 70 Z" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.5"/>'+
+      '<path d="M76 60 L76 82 L58 92 L58 70 Z" fill="currentColor" fill-opacity=".24" stroke="currentColor" stroke-width="1.5"/>'+
+      '<path d="M96 96 C110 96 108 70 124 70" stroke="currentColor" stroke-width="1.8" stroke-dasharray="4 4"/>'+
+      '<circle cx="96" cy="96" r="4" fill="currentColor"/>'+
+      '<path d="M118 92 h18 l6 -8 h8 v14 h-32 Z" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.5"/>'+
+      '<circle cx="126" cy="110" r="4.5" fill="#fff" stroke="currentColor" stroke-width="1.6"/><circle cx="146" cy="110" r="4.5" fill="#fff" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M124 70 l-4 -3 5 -2" fill="currentColor"/>'+
+      '</svg>',
+    sales:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<path d="M42 40 L138 40 L104 82 L104 116 L76 100 L76 82 Z" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.8"/>'+
+      '<circle cx="70" cy="54" r="3.2" fill="currentColor"/><circle cx="92" cy="54" r="3.2" fill="currentColor"/><circle cx="112" cy="54" r="3.2" fill="currentColor"/>'+
+      '<circle cx="82" cy="70" r="3.2" fill="currentColor"/><circle cx="100" cy="70" r="3.2" fill="currentColor"/>'+
+      '<circle cx="90" cy="108" r="15" fill="#fff" stroke="currentColor" stroke-width="1.8"/>'+
+      '<circle cx="90" cy="108" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="90" cy="108" r="2" fill="currentColor"/>'+
+      '</svg>',
+    datasci:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<path d="M78 34 h24 M84 34 v22 l-20 40 a5 5 0 0 0 4.5 7.5 h39 a5 5 0 0 0 4.5 -7.5 l-20 -40 v-22" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M74 84 h38" stroke="currentColor" stroke-width="1.6"/>'+
+      '<circle cx="86" cy="94" r="3" fill="currentColor"/><circle cx="98" cy="100" r="3" fill="currentColor"/><circle cx="92" cy="106" r="3" fill="currentColor"/><circle cx="103" cy="92" r="2.4" fill="currentColor" fill-opacity=".6"/>'+
+      '<circle cx="128" cy="52" r="12" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M137 61 l9 9" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>'+
+      '<path d="M123 52 h10 M128 47 v10" stroke="currentColor" stroke-width="1.6"/>'+
+      '</svg>',
+    aiml:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<rect x="62" y="52" width="46" height="46" rx="9" fill="currentColor" fill-opacity=".16" stroke="currentColor" stroke-width="1.8"/>'+
+      '<rect x="76" y="66" width="18" height="18" rx="4" fill="currentColor" fill-opacity=".4"/>'+
+      '<g stroke="currentColor" stroke-width="1.5"><path d="M85 52 V40 M72 52 V44 M98 52 V44 M85 98 v12 M72 98 v8 M98 98 v8 M62 75 H48 M62 63 H52 M62 87 H52 M108 75 h14 M108 63 h10 M108 87 h10"/></g>'+
+      '<g fill="currentColor"><circle cx="85" cy="40" r="3"/><circle cx="122" cy="75" r="3"/><circle cx="85" cy="110" r="3"/><circle cx="48" cy="75" r="3"/></g>'+
+      '<path d="M138 40 l1.6 4.4 4.4 1.6 -4.4 1.6 -1.6 4.4 -1.6 -4.4 -4.4 -1.6 4.4 -1.6 Z" fill="currentColor"/>'+
+      '</svg>',
+    ide:
+      '<svg viewBox="0 0 240 170" fill="none">'+
+      '<rect x="20" y="18" width="200" height="128" rx="10" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M20 40 H220" stroke="currentColor" stroke-width="1.4"/>'+
+      '<circle cx="32" cy="29" r="2.4" fill="currentColor" fill-opacity=".5"/><circle cx="41" cy="29" r="2.4" fill="currentColor" fill-opacity=".3"/><circle cx="50" cy="29" r="2.4" fill="currentColor" fill-opacity=".18"/>'+
+      '<rect x="66" y="23" width="122" height="12" rx="6" fill="currentColor" fill-opacity=".08"/>'+
+      '<text x="127" y="32" font-family="monospace" font-size="7" fill="currentColor" opacity=".55" text-anchor="middle">cloud.getdbt.com/studio</text>'+
+      '<path d="M20 40 V146" stroke="currentColor" stroke-width="1.4" opacity=".3"/>'+
+      '<path d="M32 52 H48 M32 60 H48 M32 68 H44" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" opacity=".4"/>'+
+      '<rect x="66" y="50" width="34" height="5" rx="2" fill="currentColor" opacity=".55"/><rect x="104" y="50" width="48" height="5" rx="2" fill="currentColor" opacity=".22"/>'+
+      '<rect x="74" y="61" width="22" height="5" rx="2" fill="currentColor" opacity=".3"/><rect x="100" y="61" width="62" height="5" rx="2" fill="currentColor" opacity=".18"/>'+
+      '<rect x="74" y="72" width="22" height="5" rx="2" fill="currentColor" opacity=".3"/><rect x="100" y="72" width="40" height="5" rx="2" fill="currentColor" opacity=".18"/>'+
+      '<rect x="66" y="83" width="30" height="5" rx="2" fill="currentColor" opacity=".55"/>'+
+      '<rect x="150" y="92" width="60" height="22" rx="6" fill="#fff" stroke="currentColor" stroke-width="1.5"/>'+
+      '<circle cx="161" cy="103" r="3" fill="currentColor"/>'+
+      '<text x="184" y="106" font-family="monospace" font-size="7.5" font-weight="700" fill="currentColor" text-anchor="middle">Preview</text>'+
+      '<circle cx="204" cy="130" r="14" fill="#fff" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M200 123 L211 130 L200 137 Z" fill="currentColor"/>'+
+      '</svg>',
+    cli:
+      '<svg viewBox="0 0 240 170" fill="none">'+
+      '<rect x="20" y="18" width="200" height="128" rx="10" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M20 40 H220" stroke="currentColor" stroke-width="1.4"/>'+
+      '<circle cx="32" cy="29" r="2.4" fill="currentColor" fill-opacity=".5"/><circle cx="41" cy="29" r="2.4" fill="currentColor" fill-opacity=".3"/>'+
+      '<rect x="66" y="23" width="92" height="12" rx="6" fill="currentColor" fill-opacity=".08"/>'+
+      '<text x="112" y="32" font-family="monospace" font-size="7" fill="currentColor" opacity=".55" text-anchor="middle">~/jaffle_shop</text>'+
+      '<path d="M38 60 L50 68 L38 76" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>'+
+      '<path d="M56 76 H108" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'+
+      '<path d="M38 90 L50 98 L38 106" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" opacity=".45"/>'+
+      '<rect x="56" y="102" width="66" height="6" rx="2" fill="currentColor" opacity=".28"/>'+
+      '<circle cx="44" cy="122" r="7.5" fill="currentColor"/>'+
+      '<path d="M40 122 l3 3 6.5 -6.5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '<text x="60" y="125" font-family="monospace" font-size="8" fill="currentColor" opacity=".65">Completed</text>'+
+      '<rect x="150" y="92" width="60" height="22" rx="6" fill="#fff" stroke="currentColor" stroke-width="1.5"/>'+
+      '<path d="M164 98 l1.6 4.4 4.4 1.6 -4.4 1.6 -1.6 4.4 -1.6 -4.4 -4.4 -1.6 4.4 -1.6 Z" fill="currentColor"/>'+
+      '<text x="188" y="106" font-family="monospace" font-size="7.5" font-weight="700" fill="currentColor" text-anchor="middle">Fusion</text>'+
+      '</svg>',
+    canvas:
+      '<svg viewBox="0 0 240 170" fill="none">'+
+      '<rect x="20" y="18" width="200" height="128" rx="10" fill="currentColor" fill-opacity=".05" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M20 40 H220" stroke="currentColor" stroke-width="1.4"/>'+
+      '<circle cx="32" cy="29" r="2.4" fill="currentColor" fill-opacity=".5"/><circle cx="41" cy="29" r="2.4" fill="currentColor" fill-opacity=".3"/>'+
+      '<rect x="66" y="23" width="128" height="12" rx="6" fill="currentColor" fill-opacity=".08"/>'+
+      '<text x="130" y="32" font-family="monospace" font-size="7" fill="currentColor" opacity=".55" text-anchor="middle">cloud.getdbt.com/canvas</text>'+
+      '<rect x="38" y="88" width="44" height="28" rx="7" fill="currentColor" fill-opacity=".22" stroke="currentColor" stroke-width="1.6"/>'+
+      '<rect x="120" y="56" width="44" height="28" rx="7" fill="currentColor" fill-opacity=".34" stroke="currentColor" stroke-width="1.6"/>'+
+      '<rect x="120" y="118" width="44" height="28" rx="7" fill="currentColor" fill-opacity=".26" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M82 98 Q102 98 102 72 Q102 72 120 72" stroke="currentColor" stroke-width="1.6" fill="none"/>'+
+      '<path d="M82 106 Q102 106 102 132 Q102 132 120 132" stroke="currentColor" stroke-width="1.6" fill="none"/>'+
+      '<circle cx="192" cy="102" r="15" fill="#fff" stroke="currentColor" stroke-width="1.8" stroke-dasharray="3 3"/>'+
+      '<path d="M185 102 H199 M192 95 V109" stroke="currentColor" stroke-width="1.8"/>'+
+      '</svg>',
+    pr:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<circle cx="46" cy="40" r="9" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.8"/>'+
+      '<circle cx="46" cy="112" r="9" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M46 49 V103" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M46 76 Q46 60 70 60 H108" stroke="currentColor" stroke-width="1.8" fill="none"/>'+
+      '<circle cx="122" cy="60" r="9" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.8"/>'+
+      '<rect x="96" y="86" width="60" height="38" rx="8" fill="#fff" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M108 104 L118 114 L142 92" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>'+
+      '</svg>',
+    commit:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<path d="M30 108 H150" stroke="currentColor" stroke-width="2" opacity=".35"/>'+
+      '<path d="M64 108 Q64 72 100 72 H130" stroke="currentColor" stroke-width="1.8" fill="none"/>'+
+      '<circle cx="64" cy="108" r="8" fill="currentColor" fill-opacity=".2" stroke="currentColor" stroke-width="1.8"/>'+
+      '<circle cx="130" cy="72" r="11" fill="currentColor" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M125 72 l4 4 8 -8" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '<circle cx="30" cy="108" r="5" fill="currentColor" fill-opacity=".4"/><circle cx="150" cy="108" r="5" fill="currentColor" fill-opacity=".4"/>'+
+      '</svg>',
+    orchestration:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<circle cx="90" cy="76" r="40" fill="currentColor" fill-opacity=".06" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M90 76 V50 M90 76 L108 88" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'+
+      '<circle cx="90" cy="76" r="3.2" fill="currentColor"/>'+
+      '<rect x="32" y="30" width="24" height="18" rx="4" fill="#fff" stroke="currentColor" stroke-width="1.6"/>'+
+      '<rect x="124" y="30" width="24" height="18" rx="4" fill="#fff" stroke="currentColor" stroke-width="1.6"/>'+
+      '<rect x="32" y="104" width="24" height="18" rx="4" fill="#fff" stroke="currentColor" stroke-width="1.6"/>'+
+      '<path d="M56 39 Q70 39 78 50" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 3" fill="none"/>'+
+      '<path d="M124 39 Q108 39 100 50" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 3" fill="none"/>'+
+      '<path d="M56 113 Q70 113 78 100" stroke="currentColor" stroke-width="1.4" stroke-dasharray="3 3" fill="none"/>'+
+      '</svg>',
+    governance:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<path d="M90 26 L134 42 V78 C134 104 116 120 90 130 C64 120 46 104 46 78 V42 Z" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-width="1.8"/>'+
+      '<path d="M78 68 v-9 a12 12 0 0 1 24 0 v9" stroke="currentColor" stroke-width="2.2" fill="none"/>'+
+      '<rect x="74" y="68" width="32" height="24" rx="5" fill="currentColor"/>'+
+      '<circle cx="90" cy="78" r="3" fill="#fff"/><path d="M90 81 v4" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>'+
+      '<circle cx="50" cy="46" r="4.5" fill="currentColor" fill-opacity=".5"/><circle cx="130" cy="46" r="4.5" fill="currentColor" fill-opacity=".5"/><circle cx="50" cy="106" r="4.5" fill="currentColor" fill-opacity=".5"/>'+
+      '<path d="M50 46 Q68 58 78 66" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 4" fill="none"/>'+
+      '<path d="M130 46 Q110 58 100 66" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 4" fill="none"/>'+
+      '<path d="M50 106 Q68 94 78 90" stroke="currentColor" stroke-width="1.3" stroke-dasharray="2 4" fill="none"/>'+
+      '</svg>',
+    sources:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<g transform="rotate(-8 63 79)"><rect x="40" y="50" width="46" height="58" rx="4" fill="currentColor" fill-opacity=".1" stroke="currentColor" stroke-width="1.6"/></g>'+
+      '<g transform="rotate(6 93 71)"><rect x="70" y="42" width="46" height="58" rx="4" fill="currentColor" fill-opacity=".18" stroke="currentColor" stroke-width="1.6"/></g>'+
+      '<g transform="rotate(-4 118 84)"><rect x="95" y="55" width="46" height="58" rx="4" fill="currentColor" fill-opacity=".26" stroke="currentColor" stroke-width="1.6"/></g>'+
+      '<path d="M82 60h20M82 68h26M82 76h14" stroke="currentColor" stroke-width="1.4" opacity=".55"/>'+
+      '<circle cx="58" cy="40" r="3.5" fill="currentColor" opacity=".4"/>'+
+      '<circle cx="132" cy="102" r="3.5" fill="currentColor" opacity=".4"/>'+
+      '<circle cx="44" cy="104" r="2.6" fill="currentColor" opacity=".3"/>'+
+      '</svg>',
+    trusted:
+      '<svg viewBox="0 0 180 150" fill="none">'+
+      '<rect x="46" y="38" width="88" height="64" rx="9" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-width="1.7"/>'+
+      '<path d="M60 84 V64 M78 84 V54 M96 84 V70 M114 84 V60" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" opacity=".6"/>'+
+      '<circle cx="90" cy="114" r="17" fill="currentColor"/>'+
+      '<path d="M82 114 l6 6 11 -12" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'+
+      '</svg>'
+  };
+
+  // small decorative web motif behind hero
+  function webMotif(){
+    return '<svg class="web-motif" viewBox="0 0 400 300" preserveAspectRatio="xMaxYMin slice" fill="none" stroke="currentColor" stroke-width="1">'+
+      '<g transform="translate(340 40)">'+
+      '<path d="M0 0 L-70 -20 M0 0 L-55 35 M0 0 L10 -70 M0 0 L60 -30 M0 0 L45 45 M0 0 L-20 65"/>'+
+      '<path d="M-42 -12 Q-20 -28 6 -42 Q34 -17 26 6 Q10 30 -33 21 Q-52 4 -42 -12" opacity=".7"/>'+
+      '<path d="M-24 -7 Q-8 -18 3 -24 Q18 -10 14 3 Q4 16 -18 12 Q-30 2 -24 -7" opacity=".7"/>'+
+      '</g></svg>';
+  }
+
+  /* ---------------- content ---------------- */
+  const TEAMS = [
+    {
+      id:"central", color:"#ff5c35", name:"Central IT", icon:I.hub, sub:"the foundation",
+      eyebrow:"primary contact \u00b7 produces the gold layer",
+      hero:HERO.central,
+      lifecycle:["orchestration","governance"], priority:"primary",
+      medallion:{tier:"gold", note:"Their gold is the raw material everyone downstream treats as bronze."},
+      tag:"They set the enterprise architecture and produce the foundational gold models everyone else builds from.",
+      flow:[
+        {label:"raw sources", icon:I.db},
+        {label:"central IT \u00b7 gold", icon:I.hub, on:true},
+        {label:"data engineering's bronze", icon:I.grid}
+      ],
+      personas:[
+        {r:"platform architect", icon:I.ruler},
+        {r:"data platform engineer", icon:I.wrench},
+        {r:"head of data / chief data officer", icon:I.shield}
+      ],
+      does:"They own enterprise architecture and the platform itself \u2014 deciding how data gets into the warehouse, what standards and security apply everywhere, and how the whole system is structured. What they ship is the gold layer from their own perspective \u2014 but it's the raw material, the bronze, that Data Engineering builds everything else from.",
+      cares:[
+        {icon:I.check, t:"one source of truth the whole company actually trusts"},
+        {icon:I.shield, t:"governance and security that don't slow teams down"},
+        {icon:I.clock, t:"not being the bottleneck for every data request"},
+        {icon:I.coins, t:"keeping warehouse and compute spend under control"}
+      ],
+      maps:[
+        {care:"not the bottleneck", cIcon:I.clock, cap:"dbt Mesh", cIco:I.link, d:"teams build on your governed models and reference them across projects — they self-serve instead of waiting on you."},
+        {care:"trust + governance", cIcon:I.shield, cap:"tests & lineage", cIco:I.check, d:"built-in tests catch bad data and end-to-end lineage shows where every number came from."},
+        {care:"cost & speed", cIcon:I.coins, cap:"Fusion", cIco:I.gauge, d:"the Fusion engine makes runs faster and cheaper without rewriting your project."}
+      ],
+      pitch:[
+        "You stay in control of the core data, but teams stop waiting on you — they build on your governed models through <em>dbt Mesh</em>.",
+        "Every number traces back to a tested, documented model, so when finance and marketing disagree, the <em>lineage</em> settles it — not a meeting.",
+        "<em>Fusion</em> cuts your run times and warehouse bill without you re-platforming everything."
+      ]
+    },
+    {
+      id:"dataeng", color:"#0ea5e9", name:"Data Engineering", icon:I.wrench, sub:"the refinery",
+      eyebrow:"primary contact \u00b7 turns gold into data products",
+      hero:HERO.dataeng,
+      lifecycle:["development","orchestration"], priority:"primary",
+      medallion:{tier:"bronze \u2192 gold", note:"Central IT's gold is their bronze. Their gold becomes bronze for every BU."},
+      tag:"Central IT's gold becomes their bronze \u2014 they refine it into the gold data products every business unit builds on.",
+      flow:[
+        {label:"central IT's gold", icon:I.hub},
+        {label:"data engineering", icon:I.wrench, on:true},
+        {label:"BU bronze \u00b7 4 teams", icon:I.grid}
+      ],
+      personas:[
+        {r:"analytics engineer", icon:I.layers},
+        {r:"data engineer", icon:I.wrench},
+        {r:"platform / infra engineer", icon:I.chip}
+      ],
+      does:"Central IT's gold lands in front of them as raw material \u2014 their bronze. They take it from there: building it into the governed, reusable gold data products each business unit actually builds on. This is the hands-on development work: writing models, testing them, shipping changes. They sit between Central IT's architecture and what the business actually consumes.",
+      cares:[
+        {icon:I.check, t:"shipping a data product without waiting on a platform ticket"},
+        {icon:I.repeat, t:"not rebuilding the same model for five different teams"},
+        {icon:I.gauge, t:"tooling that actually catches mistakes before they ship"},
+        {icon:I.grid, t:"a clear, documented shape for the raw data they build from"}
+      ],
+      maps:[
+        {care:"shipping fast", cIcon:I.gauge, cap:"IDE, CLI & dbt Wizard", cIco:I.spark, d:"build and validate models quickly \u2014 dbt Wizard already has the project's context, so it's not starting from zero."},
+        {care:"build once, reuse everywhere", cIcon:I.repeat, cap:"dbt Mesh", cIco:I.link, d:"a data product built for one BU can be safely referenced by another instead of rebuilt from scratch."},
+        {care:"catch mistakes early", cIcon:I.check, cap:"tests & Advanced CI", cIco:I.shield, d:"tests and CI catch bad logic before a data product ever reaches a business user."}
+      ],
+      pitch:[
+        "You're not stuck guessing at a schema \u2014 by the time raw data reaches you, Central IT's already documented and typed it.",
+        "Build a data product once in <em>dbt Mesh</em>, and another team can reuse it instead of asking you to rebuild it for them.",
+        "<em>dbt Wizard</em> already knows your project's lineage and tests, so it's not just autocomplete \u2014 it can build and validate a real change alongside you."
+      ]
+    },
+    {
+      id:"marketing", color:"#12b5a5", name:"Marketing & Growth", icon:I.mega, sub:"business unit",
+      eyebrow:"secondary \u00b7 business unit",
+      hero:HERO.marketing,
+      lifecycle:["development","governance"], priority:"secondary",
+      medallion:{tier:"bronze \u2192 gold", note:"Data Engineering's gold is their bronze. Their own ETL turns it into marketing's gold."},
+      tag:"They turn Data Engineering's data products into campaign dashboards, audiences and attribution the CMO can act on.",
+      flow:[
+        {label:"data engineering's gold", icon:I.wrench},
+        {label:"marketing \u00b7 ETL", icon:I.mega, on:true},
+        {label:"dashboards & decisions", icon:I.grid}
+      ],
+      personas:[
+        {r:"marketing analyst", icon:I.bars},
+        {r:"marketing ops lead", icon:I.gauge},
+        {r:"embedded analytics engineer", icon:I.layers}
+      ],
+      does:"They take the data products Data Engineering ships \u2014 their bronze \u2014 and run their own ETL on top: attributing revenue, building audience segments, feeding ad platforms. They live in campaign questions and need answers fast, without waiting weeks for data.",
+      cares:[
+        {icon:I.target, t:"attribution numbers they can actually stand behind"},
+        {icon:I.search, t:"finding what Data Engineering's already built before rebuilding it themselves"},
+        {icon:I.link, t:"tracing a bad number back to whichever upstream model broke it"},
+        {icon:I.layers, t:"one consistent definition of \u201clead\u201d and \u201cMQL\u201d everywhere"}
+      ],
+      maps:[
+        {care:"finding what exists", cIcon:I.search, cap:"Catalog", cIco:I.doc, d:"search Data Engineering's published data products instead of guessing what tables already exist."},
+        {care:"tracing upstream breaks", cIcon:I.link, cap:"lineage", cIco:I.branch, d:"when a number looks wrong, follow the lineage graph straight to the upstream model that changed."},
+        {care:"consistent metrics", cIcon:I.layers, cap:"dbt Semantic Layer", cIco:I.layers, d:"define \u201cqualified lead\u201d once and every dashboard and ad platform uses the same number."}
+      ],
+      pitch:[
+        "Before you rebuild anything, the <em>Catalog</em> shows you what Data Engineering's already published \u2014 half the time, it already exists.",
+        "When a number looks off, <em>lineage</em> takes you straight to the upstream model that changed \u2014 no guessing, no Slack thread.",
+        "Define \u201cqualified lead\u201d once in the <em>dbt Semantic Layer</em> and every dashboard and ad platform reports the exact same number."
+      ]
+    },
+    {
+      id:"sales", color:"#4c6fff", name:"Sales & Revenue", icon:I.funnel, sub:"business unit",
+      eyebrow:"secondary \u00b7 business unit",
+      hero:HERO.sales,
+      lifecycle:["development","governance"], priority:"secondary",
+      medallion:{tier:"bronze \u2192 gold", note:"Data Engineering's gold is their bronze. Their own ETL turns it into sales' gold."},
+      tag:"RevOps and sales analysts who turn Data Engineering's data products into pipeline, forecast and quota numbers leadership trusts.",
+      flow:[
+        {label:"data engineering's gold", icon:I.wrench},
+        {label:"sales \u00b7 ETL", icon:I.funnel, on:true},
+        {label:"forecasts & decisions", icon:I.grid}
+      ],
+      personas:[
+        {r:"revenue operations analyst", icon:I.funnel},
+        {r:"sales analyst", icon:I.bars},
+        {r:"embedded analytics engineer", icon:I.layers}
+      ],
+      does:"They take Data Engineering's data products as their bronze and run their own ETL on top \u2014 building pipeline, forecasting, territory and quota logic. When something upstream shifts, they need to know fast, because a wrong number here means the whole forecast is wrong.",
+      cares:[
+        {icon:I.deal, t:"one agreed pipeline and forecast number"},
+        {icon:I.search, t:"finding the data product Data Engineering already built instead of rebuilding it"},
+        {icon:I.link, t:"tracing a forecast problem back to the upstream model that caused it"},
+        {icon:I.check, t:"clean CRM data they can actually trust"}
+      ],
+      maps:[
+        {care:"finding what exists", cIcon:I.search, cap:"Catalog", cIco:I.doc, d:"search for the data product before rebuilding pipeline logic that already exists somewhere else."},
+        {care:"tracing problems fast", cIcon:I.link, cap:"lineage", cIco:I.branch, d:"when the forecast looks wrong, lineage shows exactly which upstream model changed."},
+        {care:"one forecast number", cIcon:I.deal, cap:"dbt Semantic Layer", cIco:I.layers, d:"pipeline and bookings defined once, so sales and finance stop arguing about whose number is right."}
+      ],
+      pitch:[
+        "Before you rebuild pipeline logic from scratch, the <em>Catalog</em> shows you what Data Engineering already published.",
+        "When the forecast looks off, <em>lineage</em> shows you exactly which upstream model changed \u2014 in minutes, not a week of Slack archaeology.",
+        "Sales and finance stop arguing about the pipeline number because it's defined once in the <em>dbt Semantic Layer</em>."
+      ]
+    },
+    {
+      id:"finance", color:"#f5a623", name:"Finance & FP&A", icon:I.ledger, sub:"business unit",
+      eyebrow:"secondary \u00b7 business unit",
+      hero:HERO.finance,
+      lifecycle:["review","governance"], priority:"secondary",
+      medallion:{tier:"bronze \u2192 gold", note:"Data Engineering's gold is their bronze. Their own ETL turns it into finance's gold."},
+      tag:"They turn Data Engineering's data products into the numbers leadership runs the company on \u2014 where accuracy and an audit trail matter more than speed.",
+      flow:[
+        {label:"data engineering's gold", icon:I.wrench},
+        {label:"finance \u00b7 ETL", icon:I.ledger, on:true},
+        {label:"board reporting", icon:I.grid}
+      ],
+      personas:[
+        {r:"financial analyst", icon:I.ledger},
+        {r:"FP&A analyst", icon:I.bars},
+        {r:"embedded analytics engineer", icon:I.layers}
+      ],
+      does:"They take Data Engineering's data products as their bronze and build revenue, margin, forecasts and board reporting on top \u2014 the numbers executives make decisions on. Every figure has to be correct, explainable, and traceable all the way back to where it entered the warehouse.",
+      cares:[
+        {icon:I.check, t:"numbers that are correct and auditable"},
+        {icon:I.search, t:"finding the data product Data Engineering already built for this"},
+        {icon:I.link, t:"a clear trail behind every figure, back through every upstream model"},
+        {icon:I.alert, t:"confidence a change upstream won't silently break a report"}
+      ],
+      maps:[
+        {care:"finding what exists", cIcon:I.search, cap:"Catalog", cIco:I.doc, d:"search for a certified data product before building the same metric a second time."},
+        {care:"a clear trail", cIcon:I.link, cap:"column-level lineage", cIco:I.link, d:"trace any board figure back through Data Engineering's models to the source system — that's your audit trail, automatically."},
+        {care:"no silent breakage", cIcon:I.alert, cap:"lineage + tests", cIco:I.shield, d:"when something upstream changes, see exactly which reports are affected before anything breaks."}
+      ],
+      pitch:[
+        "Every figure in the board deck traces back through Data Engineering's tested models to the source system — that's your audit trail, built in.",
+        "<em>Tests</em> catch a bad number before it reaches the CFO, not after.",
+        "When something upstream changes, <em>lineage</em> shows you exactly which reports are affected — so nothing breaks quietly."
+      ]
+    },
+    {
+      id:"supply", color:"#27ae60", name:"Supply Chain & Ops", icon:I.box, sub:"business unit",
+      eyebrow:"secondary \u00b7 business unit",
+      hero:HERO.supply,
+      lifecycle:["orchestration","governance"], priority:"secondary",
+      medallion:{tier:"bronze \u2192 gold", note:"Data Engineering's gold is their bronze. Their own ETL turns it into ops' gold."},
+      tag:"Operations analysts who turn Data Engineering's data products into live dashboards that keep goods moving.",
+      flow:[
+        {label:"data engineering's gold", icon:I.wrench},
+        {label:"operations \u00b7 ETL", icon:I.box, on:true},
+        {label:"live dashboards", icon:I.grid}
+      ],
+      personas:[
+        {r:"operations analyst", icon:I.bars},
+        {r:"supply chain analyst", icon:I.box},
+        {r:"embedded analytics engineer", icon:I.layers}
+      ],
+      does:"They take Data Engineering's data products as their bronze and build inventory, logistics, supplier performance and fulfillment views on top \u2014 turning it into dashboards that keep costs down and shelves stocked. Yesterday's number, or a silently broken upstream feed, is often worse than useless to them.",
+      cares:[
+        {icon:I.clock, t:"timely, reliable data \u2014 stale means wrong"},
+        {icon:I.search, t:"finding the data product Data Engineering already built before re-cleaning it themselves"},
+        {icon:I.link, t:"tracing a broken dashboard back to whichever upstream feed failed"},
+        {icon:I.route, t:"joining data across many systems without redoing the work"}
+      ],
+      maps:[
+        {care:"finding what exists", cIcon:I.search, cap:"Catalog", cIco:I.doc, d:"search Data Engineering's published models instead of re-cleaning the same ERP data again."},
+        {care:"tracing broken feeds", cIcon:I.link, cap:"lineage", cIco:I.branch, d:"when a dashboard looks wrong, lineage points straight to the upstream feed or model that broke."},
+        {care:"timely + reliable", cIcon:I.clock, cap:"freshness checks", cIco:I.clock, d:"get flagged the moment a feed goes stale, before a stockout dashboard misleads someone."}
+      ],
+      pitch:[
+        "Before re-cleaning the same ERP data again, the <em>Catalog</em> shows you what Data Engineering's already modeled.",
+        "When a dashboard looks wrong, <em>lineage</em> points straight to the upstream feed that broke \u2014 not a guessing game.",
+        "<em>Freshness checks</em> tell you the moment a feed goes stale \u2014 before a stockout dashboard sends someone the wrong way."
+      ]
+    },
+    {
+      id:"dsai", color:"#8b5cf6", name:"Data Science & AI/ML", icon:I.flask, sub:"not a priority target",
+      eyebrow:"low priority \u00b7 DS / AI / ML work",
+      hero:HERO.datasci,
+      lifecycle:["development","governance"], priority:"low",
+      medallion:{tier:"consumes gold", note:"Pulls governed gold from across the chain for experiments and features \u2014 doesn't produce a downstream bronze."},
+      tag:"Data scientists and ML engineers doing exploratory and production AI work \u2014 valuable to the business, but rarely the right entry point for a deal.",
+      flow:[
+        {label:"governed gold, org-wide", icon:I.hub},
+        {label:"data science & AI/ML", icon:I.flask, on:true},
+        {label:"insights, features & models", icon:I.spark}
+      ],
+      personas:[
+        {r:"data scientist", icon:I.flask},
+        {r:"ML engineer", icon:I.chip},
+        {r:"research / MLOps analyst", icon:I.bars}
+      ],
+      does:"Two related jobs: data scientists explore data to answer open questions \u2014 churn, pricing, behavior \u2014 and ML engineers put models into production, feeding features to live ML systems and GenAI apps. Both need trusted, governed data to start from, but neither owns a data product another team depends on \u2014 which is why they're not a priority to sell into first.",
+      cares:[
+        {icon:I.check, t:"trusted, documented data to start from"},
+        {icon:I.repeat, t:"reproducibility \u2014 same inputs, same results, same features in training and production"},
+        {icon:I.spark, t:"feeding GenAI apps from trustworthy data, not a mystery table"},
+        {icon:I.clock, t:"not spending most of their time cleaning data"}
+      ],
+      maps:[
+        {care:"trusted starting data", cIcon:I.check, cap:"governed models", cIco:I.hub, d:"start from documented, tested models via dbt Mesh instead of raw tables nobody vouches for."},
+        {care:"reproducibility", cIcon:I.repeat, cap:"version + lineage", cIco:I.branch, d:"the data behind an experiment or feature is versioned and traceable, so results hold up."},
+        {care:"less cleaning", cIcon:I.clock, cap:"Python models", cIco:I.flask, d:"work in Python inside dbt, so features and experiments live in the same governed lineage as everything else."}
+      ],
+      pitch:[
+        "Start from governed, documented models instead of raw tables — you spend your time on the analysis, not the cleanup.",
+        "Define features once as dbt models and reuse the exact same logic in training and production — no more <em>train/serve skew</em>.",
+        "When you point a GenAI app at your data, it's pulling from <em>governed, tested models</em> — not a mystery table."
+      ]
+    }
+  ];
+  const BY_ID = {}; TEAMS.forEach(function(t){ BY_ID[t.id]=t; });
+
+  /* ---------------- web geometry + render ---------------- */
+  var web = document.getElementById("web");
+  var nodesEl = document.getElementById("nodes");
+  var stage = document.getElementById("stage");
+  var stageInner = document.getElementById("stageInner");
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  var nodeMap = {};
+
+  function el(tag, attrs){
+    var e = document.createElementNS(SVGNS, tag);
+    for(var k in attrs){ e.setAttribute(k, attrs[k]); }
+    return e;
+  }
+  function pt(cx,cy,r,ang){ var a=ang*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; }
+
+  function buildNodes(){
+    nodesEl.innerHTML = "";
+    nodeMap = {};
+    TEAMS.forEach(function(t){
+      var b = document.createElement("button");
+      b.className = "node" + (t.priority==="primary" ? " node--primary":"") + (t.priority==="low" ? " node--low":"");
+      b.type = "button";
+      b.style.setProperty("--c", t.color);
+      b.setAttribute("data-id", t.id);
+      b.setAttribute("aria-label", t.name + " — open profile");
+      var medal = t.medallion ? '<span class="node-medal">'+t.medallion.tier+'</span>' : '';
+      b.innerHTML =
+        '<span class="disc">'+t.icon+'<span class="plus">+</span></span>'+
+        '<span class="lbl">'+t.name+'</span>'+
+        '<span class="sub">'+t.sub+'</span>'+
+        medal;
+      b.addEventListener("click", function(){ openTeam(t.id); });
+      nodesEl.appendChild(b);
+      nodeMap[t.id] = b;
+    });
+  }
+
+  var FLOW_W = 840, FLOW_H = 340;
+  var FLOW_POS = {
+    central:   {x:0,   y:138, w:170, h:64},
+    dataeng:   {x:210, y:138, w:170, h:64},
+    marketing: {x:420, y:18,  w:190, h:64},
+    sales:     {x:420, y:98,  w:190, h:64},
+    finance:   {x:420, y:178, w:190, h:64},
+    supply:    {x:420, y:258, w:190, h:64},
+    dsai:      {x:650, y:138, w:190, h:64}
+  };
+
+  function layout(animate){
+    web.setAttribute("viewBox", "0 0 "+FLOW_W+" "+FLOW_H);
+    while(web.firstChild) web.removeChild(web.firstChild);
+
+    function cx(p){ return p.x+p.w; }
+    function cy(p){ return p.y+p.h/2; }
+
+    var lines = [];
+    var c = FLOW_POS.central, d = FLOW_POS.dataeng, ds = FLOW_POS.dsai;
+    lines.push([cx(c), cy(c), d.x, cy(d)]);
+    ["marketing","sales","finance","supply"].forEach(function(id){
+      var bu = FLOW_POS[id];
+      lines.push([cx(d), cy(d), bu.x, cy(bu)]);
+    });
+
+    lines.forEach(function(l, i){
+      var midX = (l[0]+l[2])/2;
+      var pathD = "M"+l[0]+","+l[1]+" C"+midX+","+l[1]+" "+midX+","+l[3]+" "+l[2]+","+l[3];
+      var ln = el("path", {d:pathD, class:"thread"});
+      if(animate && !reduce){
+        var len = Math.hypot(l[2]-l[0], l[3]-l[1]);
+        ln.style.strokeDasharray = len;
+        ln.style.strokeDashoffset = len;
+        ln.style.transition = "stroke-dashoffset .6s ease "+(i*0.08)+"s";
+        requestAnimationFrame(function(){ requestAnimationFrame(function(){ ln.style.strokeDashoffset = 0; }); });
+      }
+      web.appendChild(ln);
+    });
+
+    // dsai sits past a divider, deliberately not fed by a hard connector
+    var divX = (FLOW_POS.supply.x + FLOW_POS.supply.w + ds.x) / 2;
+    var divider = el("line", {x1:divX, y1:6, x2:divX, y2:FLOW_H-6, class:"flow-divider"});
+    web.appendChild(divider);
+
+    // position html nodes
+    TEAMS.forEach(function(t, i){
+      var b = nodeMap[t.id];
+      var p = FLOW_POS[t.id];
+      b.style.left = p.x+"px";
+      b.style.top = p.y+"px";
+      b.style.width = p.w+"px";
+      b.style.height = p.h+"px";
+      if(animate && !reduce){
+        b.style.opacity = 0;
+        b.style.transform = "scale(.85)";
+        b.style.transition = "none";
+        var delay = 0.08 + i*0.06;
+        setTimeout(function(){
+          b.style.transition = "opacity .4s var(--ease), transform .4s var(--ease)";
+          b.style.opacity = "";
+          b.style.transform = "";
+        }, delay*1000);
+      } else {
+        b.style.opacity = "";
+        b.style.transform = "";
+      }
+    });
+
+    fitFlow();
+  }
+
+  function fitFlow(){
+    var W = stage.clientWidth, H = stage.clientHeight;
+    var panelOpen = document.body.classList.contains("panel-open");
+    var pw = 0;
+    if(panelOpen && window.innerWidth > 900){
+      pw = document.getElementById("panel").getBoundingClientRect().width;
+    }
+    var visibleW = W - pw;
+    if(visibleW < 260) visibleW = 260;
+    var pad = 56;
+    var s = Math.min((visibleW-pad)/FLOW_W, (H-pad)/FLOW_H, 1);
+    if(s < 0.32) s = 0.32;
+    var tx = (visibleW - s*FLOW_W)/2;
+    var ty = (H - s*FLOW_H)/2;
+    stageInner.style.transform = "matrix("+s+",0,0,"+s+","+tx+","+ty+")";
+  }
+
+  /* shift/refit when panel opens or closes */
+  function applyShift(){ fitFlow(); }
+  function clearShift(){ fitFlow(); }
+
+  /* ---------------- dev lifecycle content ---------------- */
+  const LC_CATS = {
+    speed: {label:"Speed", color:"#3b82f6"},
+    trust: {label:"Trust", color:"#22a06b"},
+    scale: {label:"Scale", color:"#8b5cf6"}
+  };
+
+  const LC_PARTS = [
+    {
+      id:"development", title:"Development",
+      caption:"However it's written, it becomes a governed dbt model.",
+      kind:"tools",
+      tools:[
+        {id:"ide", name:"IDE", hero:HERO.ide, color:"#3b82f6", d:"dbt Studio + dbt Wizard \u2014 write and preview in the browser.",
+          features:[
+            {name:"dbt Wizard", d:"the agent that investigates, builds, and validates changes with you", fusion:false},
+            {name:"CTE Preview", d:"see any CTE's output instantly", fusion:false},
+            {name:"Auto-ref & source", d:"type ref( and pick a real model", fusion:true},
+            {name:"Live error checks", d:"typos caught before you hit run", fusion:true}
+          ]
+        },
+        {id:"cli", name:"CLI", hero:HERO.cli, color:"#06b6d4", d:"Same dbt commands, your own terminal, on dbt Core.",
+          features:[
+            {name:"Fusion-powered editor", d:"same autocomplete, in VS Code", fusion:true},
+            {name:"Instant recompiles", d:"rebuilds in the background on save", fusion:true},
+            {name:"Same commands everywhere", d:"local run matches production", fusion:false}
+          ]
+        },
+        {id:"canvas", name:"Canvas", hero:HERO.canvas, color:"#f59e0b", d:"No SQL needed \u2014 drag, connect, still governed.",
+          features:[
+            {name:"Drag-and-drop steps", d:"no SQL required to start", fusion:false},
+            {name:"Compiles to real SQL", d:"same governed model underneath", fusion:false},
+            {name:"Fast validation", d:"errors surface as you connect", fusion:true}
+          ]
+        }
+      ]
+    },
+    {
+      id:"review", title:"Review",
+      caption:"A buddy check, automated CI, and advanced CI \u2014 before anything merges.",
+      kind:"stages",
+      stages:[
+        {id:"pr", name:"Pull request", hero:HERO.pr, color:"#ff5c35",
+          features:[
+            {name:"Buddy check", d:"a teammate reviews every change first", icon:I.eye, cat:"trust"},
+            {name:"Automated CI", d:"builds and tests just the change, automatically", icon:I.check, cat:"trust"},
+            {name:"Advanced CI", d:"shows exactly what data changed, before merge", icon:I.bars, cat:"trust", big:true, tag:"Enterprise"},
+            {name:"Diff preview", d:"see the exact code change, side by side", icon:I.doc, cat:"speed"}
+          ]
+        },
+        {id:"commit", name:"Commit", hero:HERO.commit, color:"#ef4444",
+          features:[
+            {name:"Merge job", d:"approved changes land on main", icon:I.merge, cat:"trust"},
+            {name:"dbt State", d:"compares your code to production, automatically", icon:I.branch, cat:"speed"},
+            {name:"Version history", d:"tracked in git, always", icon:I.clock, cat:"trust"}
+          ]
+        }
+      ],
+      compare:{
+        title:"How this beats a basic Databricks or Snowflake setup",
+        rows:[
+          {label:"Peer review", basic:"Ask around and hope someone looks", dbt:"Buddy check, on every pull request"},
+          {label:"Build validation", basic:"Run it and see what breaks", dbt:"Automated CI tests the change first"},
+          {label:"Data impact", basic:"Find out after it's already live", dbt:"Advanced CI shows the diff before merge"}
+        ]
+      }
+    },
+    {
+      id:"orchestration", title:"Orchestration",
+      caption:"Once a change is merged, this is what actually ships it.",
+      kind:"stages",
+      stages:[
+        {id:"orchestration", name:"Orchestration", hero:HERO.orchestration, color:"#6366f1",
+          d:"The engine room: it runs your project on a schedule, keeps every environment separate, and reacts automatically when something needs attention \u2014 no one has to remember to hit run.",
+          features:[
+            {name:"Scheduled jobs", d:"rebuilds on a set cadence, automatically", icon:I.clock, cat:"speed"},
+            {name:"Environments", d:"dev, staging, and production stay separate", icon:I.layers, cat:"scale"},
+            {name:"CI & merge jobs", d:"tests every pull request, deploys every merge", icon:I.repeat, cat:"trust"},
+            {name:"Alerts & retries", d:"catches failures and retries automatically", icon:I.alert, cat:"trust"},
+            {name:"dbt State", d:"knows what changed \u2014 code, data, or schema", icon:I.branch, cat:"speed", tag:"Preview"}
+          ]
+        }
+      ],
+      compare:{
+        title:"How this beats a basic Databricks or Snowflake setup",
+        rows:[
+          {label:"Scheduling", basic:"Custom scripts, Workflows, or Tasks you build and own", dbt:"Built-in jobs and environments, ready on day one"},
+          {label:"Knowing what changed", basic:"Hand-rolled tracking logic, easy to get wrong", dbt:"dbt State tracks it automatically"},
+          {label:"Handing it off", basic:"Tribal knowledge \u2014 hard to follow, hard to maintain", dbt:"One standardized framework, documented by default"}
+        ]
+      }
+    },
+    {
+      id:"governance", title:"Governance",
+      caption:"Once a data product ships, this is what makes it safe to reuse.",
+      kind:"stages",
+      stages:[
+        {id:"governance", name:"Governance", hero:HERO.governance, color:"#0a2540",
+          d:"A data product only pays off if people can actually find it, trust it, and build on it \u2014 without emailing someone to ask permission every time. That's what this stage is for.",
+          demos:true,
+          features:[
+            {name:"RBAC", d:"controls who can see or change what, by role \u2014 not by guesswork", icon:I.key, cat:"trust"},
+            {name:"dbt Mesh", d:"lets one team's data product be safely reused by another", icon:I.network, cat:"scale"},
+            {name:"Catalog & lineage", d:"makes every data product easy to find and understand", icon:I.link, cat:"trust"},
+            {name:"Access grants", d:"shares a data product with exactly the teams who need it", icon:I.users, cat:"scale"}
+          ]
+        }
+      ]
+    }
+  ];
+
+  const SECTION_LABELS = {
+    team:{
+      s1:"Who they are", s2:"What they do", s3:"What they care about", s4:"How dbt helps them", s5:"How to pitch it",
+      endNote:function(t){ return "talk track for "+t.name.toLowerCase()+" at Northwind Corp<br>sanity-check the pitch lines against your team\u2019s approved messaging"; }
+    }
+  };
+
+  /* ---------------- lifecycle story + tabs (render + wiring) ---------------- */
+  var lcPartsTabsEl = document.getElementById("lcPartsTabs");
+  var lcPanelsEl = document.getElementById("lcPartPanels");
+  var lcActivePart = "development";
+  var lcOpenT;
+
+  function lcChipHTML(f){
+    var c = LC_CATS[f.cat].color;
+    var tag = f.tag ? '<span class="lc-chip-tag">'+f.tag+'</span>' : '';
+    return '<div class="lc-chip'+(f.big?' is-big':'')+'" data-cat="'+f.cat+'" style="--c:'+c+'">'+
+             tag+'<span class="ci">'+f.icon+'</span><div class="chip-body"><b>'+f.name+'</b><span>'+f.d+'</span></div>'+
+           '</div>';
+  }
+
+  const RBAC_PRODUCTS = ["fct_revenue","dim_customers","fct_payroll","dim_campaigns"];
+  const RBAC_ROLES = [
+    {name:"Finance Analyst", access:[1,1,1,0]},
+    {name:"Marketing Analyst", access:[0,1,0,1]},
+    {name:"Platform Admin", access:[1,1,1,1]},
+    {name:"Contractor", access:[0,1,0,0]}
+  ];
+
+  function rbacMatrixHTML(withRbac){
+    var h = '<table class="rbac-matrix"><thead><tr><th></th>';
+    RBAC_PRODUCTS.forEach(function(p){ h += '<th>'+p+'</th>'; });
+    h += '</tr></thead><tbody>';
+    RBAC_ROLES.forEach(function(r){
+      h += '<tr><td>'+r.name+'</td>';
+      r.access.forEach(function(a){
+        var allowed = withRbac ? (a===1) : true;
+        h += '<td class="'+(allowed?"yes":"no")+'">'+(allowed?"\u2713":"\u2715")+'</td>';
+      });
+      h += '</tr>';
+    });
+    h += '</tbody></table>';
+    return h;
+  }
+
+  const MESH_UNITS = [
+    {name:"Finance \u00b7 Revenue", color:"#f5a623", withCount:"2 public models", withoutCount:"Rebuilt locally"},
+    {name:"Marketing \u00b7 Web & Channels", color:"#12b5a5", withCount:"1 public model", withoutCount:"Rebuilt locally"},
+    {name:"Sales \u00b7 Orders", color:"#4c6fff", withCount:"1 public model", withoutCount:"Rebuilt locally"},
+    {name:"Supply Chain \u00b7 Shipments", color:"#27ae60", withCount:"1 public model", withoutCount:"Rebuilt locally"}
+  ];
+  const MESH_MODELS = [
+    {name:"fct_orders", d:"Completed orders with revenue", owner:"sales", color:"#4c6fff"},
+    {name:"fct_revenue", d:"Recognized revenue by period", owner:"finance", color:"#f5a623"},
+    {name:"dim_customers", d:"Customer master with segments", owner:"platform", color:"#ff5c35"},
+    {name:"fct_campaigns", d:"Campaign spend and attribution", owner:"marketing", color:"#12b5a5"},
+    {name:"dim_shipments", d:"Shipment status and carrier", owner:"supply chain", color:"#27ae60"},
+    {name:"dim_products", d:"Product catalog hierarchy", owner:"platform", color:"#ff5c35"},
+    {name:"fct_web_sessions", d:"Web sessions with attribution", owner:"marketing", color:"#12b5a5"},
+    {name:"rpt_customer_ltv", d:"Lifetime value by cohort", owner:"data science", color:"#8b5cf6"},
+    {name:"fct_model_scores", d:"Model predictions in production", owner:"AI & ML", color:"#ec4899"}
+  ];
+
+  function meshLineageHTML(){
+    var W = 620, H = 260;
+    var plat = {x:0, y:98, w:166, h:64, name:"Platform \u00b7 Core Foundations", color:"#ff5c35", withCount:"4 public models", withoutCount:"Not shared"};
+    var ds = {x:454, y:98, w:166, h:64, name:"Data Science & AI \u00b7 Advanced Analytics", color:"#8b5cf6", withCount:"2 public models", withoutCount:"Duplicated upstream"};
+    var buX = 222, buW = 196, buH = 56;
+    var buY = [0, 68, 136, 204];
+
+    var pcx = plat.x+plat.w, pcy = plat.y+plat.h/2;
+    var dcx = ds.x, dcy = ds.y+ds.h/2;
+
+    var svg = '<svg class="mesh-lineage-svg" viewBox="0 0 '+W+' '+H+'" width="'+W+'" height="'+H+'"><g class="state-with">';
+    MESH_UNITS.forEach(function(u, i){
+      var cy = buY[i] + buH/2;
+      svg += '<path d="M'+pcx+','+pcy+' C'+(pcx+30)+','+pcy+' '+(buX-30)+','+cy+' '+buX+','+cy+'" class="mesh-link"/>';
+      svg += '<path d="M'+(buX+buW)+','+cy+' C'+(buX+buW+30)+','+cy+' '+(dcx-30)+','+dcy+' '+dcx+','+dcy+'" class="mesh-link"/>';
+    });
+    svg += '</g></svg>';
+
+    function cardHTML(c, x, y, w, h){
+      return '<div class="mesh-proj-card mesh-proj-abs" style="--c:'+c.color+'; left:'+x+'px; top:'+y+'px; width:'+w+'px; height:'+h+'px;">'+
+               '<span class="mesh-proj-tag">PRJ</span>'+c.name+
+               '<span class="mesh-proj-cnt state-with">'+c.withCount+'</span><span class="mesh-proj-cnt state-without">'+c.withoutCount+'</span>'+
+             '</div>';
+    }
+
+    var html = '<div class="mesh-lineage-outer"><div class="mesh-lineage" style="width:'+W+'px; height:'+H+'px;">';
+    html += svg;
+    html += cardHTML(plat, plat.x, plat.y, plat.w, plat.h);
+    MESH_UNITS.forEach(function(u, i){ html += cardHTML(u, buX, buY[i], buW, buH); });
+    html += cardHTML(ds, ds.x, ds.y, ds.w, ds.h);
+    html += '</div></div>';
+    return html;
+  }
+
+  function meshModelCardHTML(m){
+    return '<div class="mesh-model-card">'+
+             '<div class="mesh-model-top"><b>'+m.name+'</b><span class="mesh-model-badge">'+
+               '<span class="state-with">public \u2713</span><span class="state-without">private</span></span></div>'+
+             '<p>'+m.d+'</p>'+
+             '<span class="mesh-model-owner" style="--c:'+m.color+'">'+m.owner+'</span>'+
+           '</div>';
+  }
+
+  var GOV_DEMOS_HTML =
+    '<div class="gov-demos">'+
+      '<div class="gov-demo" data-state="with">'+
+        '<div class="gov-toggle">'+
+          '<button class="gov-toggle-btn" data-tstate="without">Without RBAC</button>'+
+          '<button class="gov-toggle-btn is-on" data-tstate="with">With RBAC</button>'+
+        '</div>'+
+        '<div class="gov-demo-title">Same data products, different access by role</div>'+
+        '<p class="gov-demo-sub state-without">Everyone can see everything \u2014 including what they shouldn\u2019t.</p>'+
+        '<p class="gov-demo-sub state-with">Access follows role, automatically \u2014 no manual gatekeeping.</p>'+
+        '<div class="state-without">'+rbacMatrixHTML(false)+'</div>'+
+        '<div class="state-with">'+rbacMatrixHTML(true)+'</div>'+
+      '</div>'+
+      '<div class="gov-demo" data-state="with">'+
+        '<div class="gov-toggle">'+
+          '<button class="gov-toggle-btn" data-tstate="without">Without Mesh</button>'+
+          '<button class="gov-toggle-btn is-on" data-tstate="with">With Mesh</button>'+
+        '</div>'+
+        '<div class="gov-demo-title">Public, certified data products</div>'+
+        '<p class="gov-demo-sub state-without">Every team rebuilds the same core data, on their own.</p>'+
+        '<p class="gov-demo-sub state-with">Teams build on each other\u2019s governed models instead of rebuilding them.</p>'+
+        '<div class="mesh-lineage-label">PROJECT LINEAGE</div>'+
+        meshLineageHTML()+
+        '<p class="mesh-contracts-note state-with"><b>dbt contracts</b> are what make this safe \u2014 a breaking change to a public model\u2019s shape is caught before it ever reaches another team\u2019s project.</p>'+
+        '<p class="mesh-contracts-note state-without">Without a public, contracted interface, a schema change in one project silently breaks another\u2019s pipeline.</p>'+
+        '<div class="mesh-models-label">'+
+          '<span class="state-with">9 certified models, maintained by different teams</span>'+
+          '<span class="state-without">9 models, quietly rebuilt by whoever needs them</span>'+
+        '</div>'+
+        '<div class="mesh-models-grid">'+ MESH_MODELS.map(meshModelCardHTML).join("") +'</div>'+
+      '</div>'+
+    '</div>';
+
+  function lcStageBlockHTML(s){
+    var h = '<div class="lc-stage-block'+(s.d?' has-desc':'')+'">';
+    h += '<div class="lc-stage-illus" style="--c:'+s.color+'"><div class="lc-illus-art">'+s.hero+'</div><div class="lc-illus-label">'+s.name+'</div></div>';
+    if(s.d) h += '<p class="lc-stage-d">'+s.d+'</p>';
+    h += '<div class="lc-feat-grid">';
+    s.features.forEach(function(f){ h += lcChipHTML(f); });
+    h += '</div>';
+    if(s.demos) h += GOV_DEMOS_HTML;
+    h += '</div>';
+    return h;
+  }
+
+  function lcCompareHTML(cmp){
+    var h = '<div class="lc-compare"><div class="lc-compare-title">'+cmp.title+'</div>';
+    h += '<div class="lc-compare-grid">';
+    h += '<span class="lc-compare-h"></span><span class="lc-compare-h">Basic warehouse setup</span><span class="lc-compare-h lc-compare-h-dbt">With dbt</span>';
+    cmp.rows.forEach(function(r){
+      h += '<span class="lc-compare-label">'+r.label+'</span>'+
+           '<span class="lc-compare-basic">'+r.basic+'</span>'+
+           '<span class="lc-compare-dbt">'+I.check+r.dbt+'</span>';
+    });
+    h += '</div></div>';
+    return h;
+  }
+
+  function lcRenderParts(){
+    document.getElementById("lcSourcesArt").innerHTML = HERO.sources;
+    document.getElementById("lcProductsArt").innerHTML = HERO.trusted;
+
+    lcPartsTabsEl.innerHTML = LC_PARTS.map(function(p, i){
+      return '<button class="part-tab'+(i===0?' is-on':'')+'" data-part="'+p.id+'">'+p.title+'</button>';
+    }).join("");
+
+    lcPanelsEl.innerHTML = LC_PARTS.map(function(part, i){
+      var h = '<div class="lc-panel'+(i===0?' is-on':'')+'" data-part="'+part.id+'">';
+      h += '<div class="lc-panel-head"><h3>'+part.title+'</h3><p>'+part.caption+'</p></div>';
+
+      if(part.kind === "tools"){
+        h += '<div class="lc-fusion-legend"><span class="lc-fusion-dot"></span> = powered by the dbt Fusion engine</div>';
+        h += '<div class="lc-tools-row">';
+        part.tools.forEach(function(t){
+          h += '<div class="lc-tool" style="--c:'+t.color+'">';
+          h += '<div class="lc-illus-art">'+t.hero+'</div><div class="lc-illus-label">'+t.name+'</div><p class="lc-tool-d">'+t.d+'</p>';
+          h += '<div class="lc-tool-feats">';
+          t.features.forEach(function(f){
+            h += '<div class="lc-tool-feat">'+(f.fusion ? '<span class="lc-fusion-dot"></span>' : '<span class="lc-fusion-dot is-off"></span>')+
+                 '<div><b>'+f.name+'</b><span>'+f.d+'</span></div></div>';
+          });
+          h += '</div></div>';
+        });
+        h += '</div>';
+      } else {
+        h += '<div class="lc-cat-filter">'+
+          '<button class="cat-tab is-on" data-cat="all">All</button>'+
+          '<button class="cat-tab" data-cat="speed" style="--c:'+LC_CATS.speed.color+'">'+LC_CATS.speed.label+'</button>'+
+          '<button class="cat-tab" data-cat="trust" style="--c:'+LC_CATS.trust.color+'">'+LC_CATS.trust.label+'</button>'+
+          '<button class="cat-tab" data-cat="scale" style="--c:'+LC_CATS.scale.color+'">'+LC_CATS.scale.label+'</button>'+
+        '</div>';
+        h += '<div class="lc-stages-row">';
+        part.stages.forEach(function(s){ h += lcStageBlockHTML(s); });
+        h += '</div>';
+        if(part.compare) h += lcCompareHTML(part.compare);
+      }
+      h += '</div>';
+      return h;
+    }).join("");
+  }
+
+  var lcHeightT;
+  function lcMeasure(el){
+    var prev = el.getAttribute("style") || "";
+    el.style.cssText = "position:absolute; visibility:hidden; display:block; width:"+lcPanelsEl.clientWidth+"px;";
+    var h = el.scrollHeight;
+    el.setAttribute("style", prev);
+    return h;
+  }
+  function lcShowPart(id){
+    if(id === lcActivePart) return;
+    var oldPanel = lcPanelsEl.querySelector(".lc-panel.is-on");
+    var newPanel = lcPanelsEl.querySelector('.lc-panel[data-part="'+id+'"]');
+    if(!newPanel || newPanel === oldPanel) return;
+    lcActivePart = id;
+
+    var startH = lcPanelsEl.offsetHeight;
+    var endH = lcMeasure(newPanel);
+
+    lcPanelsEl.style.overflow = "hidden";
+    lcPanelsEl.style.transition = "none";
+    lcPanelsEl.style.height = startH+"px";
+    lcPanelsEl.getBoundingClientRect();
+
+    if(oldPanel) oldPanel.classList.remove("is-on");
+    newPanel.classList.add("is-on");
+
+    if(!reduce){
+      lcPanelsEl.style.transition = "height .5s cubic-bezier(.22,.68,.24,1)";
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){ lcPanelsEl.style.height = endH+"px"; }); });
+    } else {
+      lcPanelsEl.style.height = endH+"px";
+    }
+
+    clearTimeout(lcHeightT);
+    lcHeightT = setTimeout(function(){
+      lcPanelsEl.style.height = "";
+      lcPanelsEl.style.overflow = "";
+      lcPanelsEl.style.transition = "";
+    }, 520);
+
+    document.querySelectorAll(".part-tab").forEach(function(b){ b.classList.toggle("is-on", b.getAttribute("data-part")===id); });
+  }
+
+  function lcOpenTabs(){
+    var el = document.getElementById("lcTabsReveal");
+    var dbt = document.getElementById("lcDbtNode");
+    if(el.classList.contains("is-open")) return;
+    var h = el.scrollHeight;
+    el.style.maxHeight = h+"px";
+    el.classList.add("is-open");
+    dbt.classList.add("is-active");
+    dbt.setAttribute("aria-expanded", "true");
+    clearTimeout(lcOpenT);
+    lcOpenT = setTimeout(function(){ el.style.maxHeight = "none"; }, 750);
+    if(!reduce){
+      setTimeout(function(){ el.scrollIntoView({behavior:"smooth", block:"start"}); }, 200);
+    }
+  }
+  function lcCloseTabs(){
+    var el = document.getElementById("lcTabsReveal");
+    var dbt = document.getElementById("lcDbtNode");
+    el.style.maxHeight = "0";
+    el.classList.remove("is-open");
+    dbt.classList.remove("is-active");
+    dbt.setAttribute("aria-expanded", "false");
+  }
+
+  /* ---------------- why dbt now (independent of the lifecycle module above) ---------------- */
+  var WN_OLD_ICON =
+    '<svg viewBox="0 0 180 150" fill="none">'+
+    '<rect x="50" y="45" width="80" height="70" rx="8" fill="currentColor" fill-opacity=".08" stroke="currentColor" stroke-width="1.7"/>'+
+    '<path d="M50 65 H130" stroke="currentColor" stroke-width="1.6"/>'+
+    '<path d="M68 38 V52 M112 38 V52" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>'+
+    '<rect x="62" y="78" width="12" height="12" rx="2" fill="currentColor" opacity=".3"/><rect x="84" y="78" width="12" height="12" rx="2" fill="currentColor" opacity=".3"/><rect x="106" y="78" width="12" height="12" rx="2" fill="currentColor" opacity=".55"/>'+
+    '<rect x="62" y="96" width="12" height="12" rx="2" fill="currentColor" opacity=".3"/><rect x="84" y="96" width="12" height="12" rx="2" fill="currentColor" opacity=".3"/>'+
+    '</svg>';
+  var WN_NEW_ICON =
+    '<svg viewBox="0 0 180 150" fill="none">'+
+    '<circle cx="90" cy="75" r="42" fill="currentColor" fill-opacity=".07" stroke="currentColor" stroke-width="1.6"/>'+
+    '<path d="M96 42 L66 82 H86 L82 108 L114 66 H94 Z" fill="currentColor" opacity=".85"/>'+
+    '</svg>';
+
+  const LC_STAGE_COLORS = {Development:"#3b82f6", Review:"#ff5c35", Orchestration:"#6366f1", Governance:"#0a2540"};
+  const PERSONA_TIERS = {
+    btl:{label:"BTL", sub:"Practitioners", roles:"Data Engineer, DE Manager", color:"#3b82f6"},
+    otl:{label:"OTL", sub:"Team Leads", roles:"Chief Architect, DE Lead", color:"#8b5cf6"},
+    atl:{label:"ATL", sub:"Executives", roles:"Head of Data, Head of Data Platform, CTO, CEO", color:"#0a2540"}
+  };
+  const RCR_TRIANGLE_HTML =
+    '<div class="rcr-triangle-wrap">'+
+      '<svg viewBox="0 0 260 195" class="rcr-triangle-svg" aria-hidden="true">'+
+        '<path d="M130 34 L234 158 L26 158 Z" class="rcr-tri-shape"/>'+
+        '<circle cx="130" cy="34" r="6" class="rcr-tri-dot" style="--c:#22a06b"/>'+
+        '<circle cx="234" cy="158" r="6" class="rcr-tri-dot" style="--c:#f59e0b"/>'+
+        '<circle cx="26" cy="158" r="6" class="rcr-tri-dot" style="--c:#ef4444"/>'+
+        '<text x="130" y="18" text-anchor="middle" class="rcr-tri-label" fill="#22a06b">Revenue</text>'+
+        '<text x="234" y="185" text-anchor="middle" class="rcr-tri-label" fill="#f59e0b">Cost</text>'+
+        '<text x="26" y="185" text-anchor="middle" class="rcr-tri-label" fill="#ef4444">Risk</text>'+
+      '</svg>'+
+      '<p class="rcr-triangle-cap">Every use case ultimately drives one, two, or all three of these.</p>'+
+    '</div>';
+
+  const USE_CASES = [
+    {
+      id:"migration", title:"Migration", color:"#3b82f6",
+      tagline:"Move off legacy pipelines without losing months to validation.",
+      stages:[
+        {stage:"Development", icon:I.code, d:"Rebuild legacy SQL and stored procs as governed dbt models, incrementally, alongside the old system."},
+        {stage:"Review", icon:I.eye, d:"See exactly what a change touches downstream, so migrated logic gets validated fast."},
+        {stage:"Orchestration", icon:I.gauge, d:"Run old and new pipelines side by side on a schedule until the numbers match."},
+        {stage:"Governance", icon:I.shield, d:"Column-level lineage tracks every dependency, so nothing gets missed on cutover."}
+      ],
+      talkTracks:{
+        btl:{d:"You're the one actually rewriting the legacy SQL, and impact analysis is what saves you the worst part of a migration \u2014 finding out three weeks later that a change broke something two hops downstream. Column-level lineage shows you the blast radius before you touch anything, and running old-vs-new side by side means you're comparing actual numbers, not just hoping the rewrite is right."},
+        otl:{d:"Your job is keeping the migration on a timeline without the team burning out on manual validation. Impact analysis and Advanced CI's compare-changes turn \u2018did we get this right?\u2019 from a week of cross-checking into something the tooling shows you directly \u2014 so your team can move through the backlog instead of getting stuck re-verifying the same models over and over."},
+        atl:{d:"A migration that drags on for a year is a year of parallel infrastructure cost and a team that isn't shipping anything new. The real ask here is a shorter, safer path off legacy systems \u2014 dbt compresses the validation window so the business sees the payoff sooner, and nobody has to explain to the board why a migration that started last year still isn't done."}
+      }
+    },
+    {
+      id:"consistency", title:"Consistent development", color:"#06b6d4",
+      tagline:"One way of building, no matter which team or tool.",
+      stages:[
+        {stage:"Development", icon:I.code, d:"IDE, CLI, Canvas, or dbt Wizard \u2014 everyone writes to the same conventions and the same governed models."},
+        {stage:"Review", icon:I.eye, d:"Every change gets the same buddy check and automated CI, regardless of who wrote it."},
+        {stage:"Orchestration", icon:I.gauge, d:"The same jobs, environments, and scheduling model across every project."},
+        {stage:"Governance", icon:I.shield, d:"RBAC and dbt Mesh keep standards consistent even as the number of teams grows."}
+      ],
+      talkTracks:{
+        btl:{d:"You're not stuck guessing at another team's conventions, or explaining yours to them \u2014 the same buddy check and automated CI apply to every change, so you know exactly what \u2018done\u2019 looks like no matter whose project you're in."},
+        otl:{d:"Standardizing how every team builds means you're not reinventing onboarding, review, and tooling decisions for every new project. One dbt workflow means a new hire on any team is productive in days, not weeks, and you're not the one arbitrating five different ways of doing the same thing."},
+        atl:{d:"Inconsistent tooling across teams is invisible technical debt \u2014 it shows up as slow onboarding, duplicated licensing spend, and the kind of quiet errors that surface in a board meeting. One governed standard, enforced automatically, is cheaper to run and safer to scale than five bespoke ones."}
+      }
+    },
+    {
+      id:"mesh", title:"Mesh architecture", color:"#8b5cf6",
+      tagline:"Let every team own their data, without losing one governed structure.",
+      stages:[
+        {stage:"Development", icon:I.code, d:"Each domain builds its own models, in its own project, at its own pace."},
+        {stage:"Review", icon:I.eye, d:"Model contracts catch breaking changes before they hit another team's project."},
+        {stage:"Orchestration", icon:I.gauge, d:"Cross-project jobs run independently, but stay connected through shared references."},
+        {stage:"Governance", icon:I.shield, d:"dbt Mesh makes those models discoverable and reusable, without a central bottleneck."}
+      ],
+      talkTracks:{
+        btl:{d:"You build your models in your own project, at your own pace \u2014 you're not blocked waiting on a central team, and model contracts mean you find out immediately if a change you're making would break someone downstream, instead of finding out from an angry Slack message."},
+        otl:{d:"Mesh is what lets you say yes to another team building on your project without becoming their support desk. Public, certified models mean other teams self-serve off work you've already done and tested, so your team's roadmap doesn't get eaten by other people's requests."},
+        atl:{d:"Decentralizing without a Mesh is how ten teams end up with ten definitions of \u2018active customer.\u2019 dbt Mesh lets you give teams autonomy to move at their own speed while keeping one governed structure underneath \u2014 you get the speed of a decentralized org without losing the one-source-of-truth a centralized one gives you."}
+      }
+    },
+    {
+      id:"ai", title:"AI at scale", color:"#ec4899",
+      tagline:"The data layer is the AI layer \u2014 make it trusted, not just fast.",
+      stages:[
+        {stage:"Development", icon:I.code, d:"dbt Wizard works as a harness that grounds external agents like Claude Code or Cursor in your project's lineage and tests \u2014 or as a standalone agent that investigates, builds, and documents changes end to end."},
+        {stage:"Review", icon:I.eye, d:"Every model an AI agent touches still goes through the same CI and buddy check as a human's."},
+        {stage:"Orchestration", icon:I.gauge, d:"dbt State skips rebuilding what hasn't changed, so scaling up AI workloads doesn't scale up the bill."},
+        {stage:"Governance", icon:I.shield, d:"RBAC and the Catalog mean AI agents only ever see the data they're supposed to."}
+      ],
+      talkTracks:{
+        btl:{d:"dbt Wizard already knows your project's lineage, tests, and contracts \u2014 it's not a generic coding assistant guessing at your schema, it's grounded in the same models you're already working in, so what it builds actually fits."},
+        otl:{d:"Every AI pilot that never makes it to production died because nobody trusted the data underneath it. Governed models mean your team's AI initiatives are built on the same tested, documented foundation as everything else \u2014 so a proof of concept has a real path to shipping instead of stalling in a demo."},
+        atl:{d:"AI workloads are expensive to run at scale, and ungoverned data pointed at an AI agent is a compliance incident waiting to happen. dbt State keeps the compute cost in check as usage grows, and RBAC plus the Catalog make sure agents only ever see what they're supposed to \u2014 so AI scales without the bill or the risk scaling with it."}
+      }
+    },
+    {
+      id:"selfserve", title:"Self-service analytics", color:"#22a06b",
+      tagline:"Trusted answers for everyone, without an engineering ticket.",
+      stages:[
+        {stage:"Development", icon:I.code, d:"Canvas lets business users build real models without writing SQL."},
+        {stage:"Review", icon:I.eye, d:"Automated tests catch bad data before a bad dashboard ever ships."},
+        {stage:"Orchestration", icon:I.gauge, d:"Fresh data lands on a schedule everyone can rely on."},
+        {stage:"Governance", icon:I.shield, d:"The Semantic Layer and Catalog mean everyone gets the same answer to the same question."}
+      ],
+      talkTracks:{
+        btl:{d:"You're not the one fielding every ad hoc dashboard request \u2014 Canvas and the Semantic Layer mean business users can get a trusted answer themselves, and when they do build something, it's tested against the same rules as everything else."},
+        otl:{d:"Self-service done well means your team's backlog isn't every business unit's dashboard queue. The Semantic Layer means \u2018self-service\u2019 and \u2018the governed number\u2019 are the same thing, so you're not spending review cycles catching business users' shadow metrics."},
+        atl:{d:"Every decision that waits on an engineering ticket is a decision made later, or made on a guess. Self-service on governed data means the business moves at the speed it wants to, without trading away the one-number-everyone-trusts that got lost the last time \u2018self-service\u2019 meant everyone building their own spreadsheet."}
+      }
+    }
+  ];
+
+  var wnPartsTabsEl = document.getElementById("wnPartsTabs");
+  var wnPanelsEl = document.getElementById("wnPartPanels");
+  var wnActivePart = "migration";
+  var wnHeightT, wnOpenT;
+
+  function wnChipHTML(f, c){
+    return '<div class="lc-chip" style="--c:'+c+'"><span class="ci">'+f.icon+'</span><div class="chip-body"><b>'+f.name+'</b><span>'+f.d+'</span></div></div>';
+  }
+
+  function wnJourneyHTML(stages){
+    var h = '<div class="wn-journey">';
+    stages.forEach(function(s, i){
+      h += wnChipHTML({name:s.stage, d:s.d, icon:s.icon}, LC_STAGE_COLORS[s.stage]);
+      if(i < stages.length-1) h += '<span class="wn-journey-arrow">'+I.arrow+'</span>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  function wnMeasure(el){
+    var prev = el.getAttribute("style") || "";
+    el.style.cssText = "position:absolute; visibility:hidden; display:block; width:"+wnPanelsEl.clientWidth+"px;";
+    var h = el.scrollHeight;
+    el.setAttribute("style", prev);
+    return h;
+  }
+
+  function wnRenderParts(){
+    document.getElementById("wnOldArt").innerHTML = HERO.sources;
+    document.getElementById("wnNewArt").innerHTML = HERO.trusted;
+
+    wnPartsTabsEl.innerHTML = USE_CASES.map(function(p, i){
+      return '<button class="part-tab'+(i===0?' is-on':'')+'" data-part="'+p.id+'" style="--c:'+p.color+'">'+p.title+'</button>';
+    }).join("");
+
+    wnPanelsEl.innerHTML = USE_CASES.map(function(part, i){
+      var h = '<div class="lc-panel'+(i===0?' is-on':'')+'" data-part="'+part.id+'">';
+      h += '<div class="lc-panel-head"><h3>'+part.title+'</h3><p>'+part.tagline+'</p></div>';
+      h += wnJourneyHTML(part.stages);
+      if(part.talkTracks){
+        h += '<div class="wn-talk"><div class="wn-talk-title">Example talk track</div>';
+        h += RCR_TRIANGLE_HTML;
+        h += '<div class="persona-tabs">';
+        ["btl","otl","atl"].forEach(function(k, pi){
+          var p = PERSONA_TIERS[k];
+          h += '<button class="persona-tab'+(pi===0?' is-on':'')+'" data-persona="'+k+'" style="--c:'+p.color+'">'+p.label+' <span>'+p.sub+'</span></button>';
+        });
+        h += '</div>';
+        h += '<div class="persona-panels">';
+        ["btl","otl","atl"].forEach(function(k, pi){
+          var p = PERSONA_TIERS[k];
+          var tt = part.talkTracks[k];
+          h += '<div class="persona-panel'+(pi===0?' is-on':'')+'" data-persona="'+k+'">';
+          h += '<div class="persona-roles">Speaking to: '+p.roles+'</div>';
+          h += '<p>'+tt.d+'</p>';
+          h += '</div>';
+        });
+        h += '</div></div>';
+      }
+      h += '</div>';
+      return h;
+    }).join("");
+  }
+
+  function wnShowPart(id){
+    if(id === wnActivePart) return;
+    var oldPanel = wnPanelsEl.querySelector(".lc-panel.is-on");
+    var newPanel = wnPanelsEl.querySelector('.lc-panel[data-part="'+id+'"]');
+    if(!newPanel || newPanel === oldPanel) return;
+    wnActivePart = id;
+
+    var startH = wnPanelsEl.offsetHeight;
+    var endH = wnMeasure(newPanel);
+
+    wnPanelsEl.style.overflow = "hidden";
+    wnPanelsEl.style.transition = "none";
+    wnPanelsEl.style.height = startH+"px";
+    wnPanelsEl.getBoundingClientRect();
+
+    if(oldPanel) oldPanel.classList.remove("is-on");
+    newPanel.classList.add("is-on");
+
+    if(!reduce){
+      wnPanelsEl.style.transition = "height .5s cubic-bezier(.22,.68,.24,1)";
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){ wnPanelsEl.style.height = endH+"px"; }); });
+    } else {
+      wnPanelsEl.style.height = endH+"px";
+    }
+
+    clearTimeout(wnHeightT);
+    wnHeightT = setTimeout(function(){
+      wnPanelsEl.style.height = "";
+      wnPanelsEl.style.overflow = "";
+      wnPanelsEl.style.transition = "";
+    }, 520);
+
+    document.querySelectorAll("#wnPartsTabs .part-tab").forEach(function(b){ b.classList.toggle("is-on", b.getAttribute("data-part")===id); });
+  }
+
+  function wnOpenTabs(){
+    var el = document.getElementById("wnTabsReveal");
+    var dbt = document.getElementById("wnDbtNode");
+    if(el.classList.contains("is-open")) return;
+    var h = el.scrollHeight;
+    el.style.maxHeight = h+"px";
+    el.classList.add("is-open");
+    dbt.classList.add("is-active");
+    dbt.setAttribute("aria-expanded", "true");
+    clearTimeout(wnOpenT);
+    wnOpenT = setTimeout(function(){ el.style.maxHeight = "none"; }, 750);
+    if(!reduce){
+      setTimeout(function(){ el.scrollIntoView({behavior:"smooth", block:"start"}); }, 200);
+    }
+  }
+  function wnCloseTabs(){
+    var el = document.getElementById("wnTabsReveal");
+    var dbt = document.getElementById("wnDbtNode");
+    el.style.maxHeight = "0";
+    el.classList.remove("is-open");
+    dbt.classList.remove("is-active");
+    dbt.setAttribute("aria-expanded", "false");
+  }
+
+  /* ---------------- panel rendering ---------------- */
+  var panelBody = document.getElementById("panelBody");
+  var here = document.getElementById("here");
+  var current = null;
+
+  function flowHTML(t){
+    var html = '<div class="flow"><div class="flow-label">'+I.link+' where they sit in the data flow</div>'+
+      '<div class="flow-track"><div class="flow-line"></div><div class="flow-packet" style="--c:'+t.color+'"></div>';
+    t.flow.forEach(function(n){
+      html += '<div class="flow-node'+(n.on?' on':'')+'" style="--c:'+t.color+'">'+
+              '<div class="flow-dot">'+n.icon+'</div><small>'+n.label+'</small></div>';
+    });
+    html += '</div></div>';
+    return html;
+  }
+
+  const LIFECYCLE_META = {
+    development:{label:"Development", color:"#3b82f6"},
+    review:{label:"Review", color:"#ff5c35"},
+    orchestration:{label:"Orchestration", color:"#6366f1"},
+    governance:{label:"Governance", color:"#0a2540"}
+  };
+
+  function render(t, kind){
+    kind = kind || "team";
+    var L = SECTION_LABELS[kind];
+    var h = "";
+    h += '<div class="hero" style="--c:'+t.color+'">'+webMotif()+
+         '<div class="hero-eyebrow"><span class="chip"></span>'+t.eyebrow+'</div>'+
+         '<div class="hero-top"><div><h2 id="panelTitle">'+t.name+'</h2><p class="tag">'+t.tag+'</p></div>'+
+         '<div class="hero-art">'+t.hero+'</div></div></div>';
+
+    if(t.priority === "primary"){
+      h += '<div class="priority-badge is-primary">\u2605 Primary contact \u2014 talk to them first</div>';
+    } else if(t.priority === "secondary"){
+      h += '<div class="priority-badge">Secondary contact \u2014 valuable context, usually via Canvas</div>';
+    } else if(t.priority === "low"){
+      h += '<div class="priority-badge is-low">Not a priority \u2014 rarely the right entry point</div>';
+    }
+
+    if(t.medallion){
+      h += '<div class="medallion-note" style="--c:'+t.color+'"><span class="medallion-tier">'+t.medallion.tier.toUpperCase()+'</span>'+t.medallion.note+'</div>';
+    }
+
+    if(t.lifecycle && t.lifecycle.length){
+      h += '<div class="lc-crossref"><span class="lc-crossref-label">Cares most about, in the dev lifecycle</span>';
+      t.lifecycle.forEach(function(id){
+        var m = LIFECYCLE_META[id];
+        if(m) h += '<span class="lc-crossref-tag" style="--c:'+m.color+'">'+m.label+'</span>';
+      });
+      h += '</div>';
+    }
+
+    h += flowHTML(t);
+
+    // section 1
+    h += '<div class="sec" style="--c:'+t.color+'"><div class="sec-h"><span class="n">1</span><h3>'+L.s1+'</h3></div><div class="personas">';
+    t.personas.forEach(function(p){ h += '<div class="persona"><span class="av">'+p.icon+'</span><span>'+p.r+'</span></div>'; });
+    h += '</div></div>';
+
+    // section 2
+    h += '<div class="sec" style="--c:'+t.color+'"><div class="sec-h"><span class="n">2</span><h3>'+L.s2+'</h3></div><p class="do-text">'+t.does+'</p></div>';
+
+    // section 3
+    h += '<div class="sec" style="--c:'+t.color+'"><div class="sec-h"><span class="n">3</span><h3>'+L.s3+'</h3></div><div class="cares">';
+    t.cares.forEach(function(c){ h += '<div class="care"><span class="ci">'+c.icon+'</span><p>'+c.t+'</p></div>'; });
+    h += '</div></div>';
+
+    // section 4
+    h += '<div class="sec" style="--c:'+t.color+'"><div class="sec-h"><span class="n">4</span><h3>'+L.s4+'</h3></div><div class="maps">';
+    t.maps.forEach(function(m){
+      h += '<div class="map-row">'+
+           '<div class="map-care">'+m.cIcon+'<span>'+m.care+'</span></div>'+
+           '<div class="map-arrow">'+I.arrow+'</div>'+
+           '<div class="map-cap"><span class="cap-name"><span class="cd">'+m.cIco+'</span><b>'+m.cap+'</b></span><div class="cap-detail">'+m.d+'</div></div>'+
+           '</div>';
+    });
+    h += '</div></div>';
+
+    // section 5
+    h += '<div class="sec" style="--c:'+t.color+'"><div class="sec-h"><span class="n">5</span><h3>'+L.s5+'</h3></div><div class="pitches">';
+    t.pitch.forEach(function(p){
+      h += '<div class="pitch"><div class="who">'+I.quote+' try saying</div><div class="bubble">'+p+'</div></div>';
+    });
+    h += '</div></div>';
+
+    h += '<div class="panel-end"><div class="rule"></div><p>'+L.endNote(t)+'</p></div>';
+
+    panelBody.innerHTML = h;
+    panelBody.scrollTop = 0;
+    here.textContent = t.sub;
+  }
+
+  function openTeam(id){
+    var t = BY_ID[id];
+    current = id;
+    render(t, "team");
+    Object.keys(nodeMap).forEach(function(k){ nodeMap[k].classList.toggle("is-active", k===id); });
+    document.body.classList.add("panel-open");
+    applyShift();
+    setTimeout(function(){ document.getElementById("close").focus(); }, 60);
+  }
+  function closePanel(){
+    document.body.classList.remove("panel-open");
+    clearShift();
+    Object.keys(nodeMap).forEach(function(k){ nodeMap[k].classList.remove("is-active"); });
+    if(current && nodeMap[current]) nodeMap[current].focus();
+    current = null;
+  }
+  function step(dir){
+    if(!current) return;
+    var idx = TEAMS.findIndex(function(t){return t.id===current;});
+    idx = (idx + dir + TEAMS.length) % TEAMS.length;
+    openTeam(TEAMS[idx].id);
+  }
+
+  /* ---------------- wire up ---------------- */
+  var currentView = "lifecycle";
+  var teamsBuilt = false;
+  var wnBuilt = false;
+  var SECTION_META = {
+    lifecycle:{ title:"The dbt development lifecycle", caption:"How a change moves from raw sources to a trusted data product." },
+    teams:{ title:"Enterprise account map", caption:"Gold flows downstream — one team's gold is the next team's bronze." },
+    whynow:{ title:"Use cases", caption:"The same dbt lifecycle, applied to the situations that come up again and again." }
+  };
+  function lcSetSectionHead(v){
+    document.getElementById("sectionTitle").textContent = SECTION_META[v].title;
+    document.getElementById("sectionCaption").textContent = SECTION_META[v].caption;
+  }
+  function initTeams(){
+    if(teamsBuilt) return;
+    teamsBuilt = true;
+    buildNodes();
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ layout(true); }); });
+  }
+  function initWhyNow(){
+    if(wnBuilt) return;
+    wnBuilt = true;
+    wnRenderParts();
+  }
+  document.getElementById("reset").addEventListener("click", function(){
+    closePanel();
+    if(currentView === "lifecycle"){
+      lcShowPart("development");
+      lcCloseTabs();
+    } else if(currentView === "whynow"){
+      wnCloseTabs();
+    }
+  });
+  document.getElementById("close").addEventListener("click", closePanel);
+  document.getElementById("backdrop").addEventListener("click", closePanel);
+  document.getElementById("prev").addEventListener("click", function(){ step(-1); });
+  document.getElementById("next").addEventListener("click", function(){ step(1); });
+
+  document.querySelectorAll(".tab").forEach(function(btn){
+    btn.addEventListener("click", function(){
+      var v = btn.getAttribute("data-view");
+      if(v === currentView) return;
+      closePanel();
+      document.body.classList.remove("view-teams", "view-lifecycle", "view-whynow");
+      document.body.classList.add("view-"+v);
+      currentView = v;
+      lcSetSectionHead(v);
+      document.querySelectorAll(".tab").forEach(function(b){ b.classList.toggle("is-on", b===btn); });
+      if(v === "teams") initTeams();
+      if(v === "whynow") initWhyNow();
+    });
+  });
+  lcSetSectionHead(currentView);
+
+  document.addEventListener("keydown", function(e){
+    if(!document.body.classList.contains("panel-open")) return;
+    if(e.key === "Escape") closePanel();
+    else if(e.key === "ArrowLeft") step(-1);
+    else if(e.key === "ArrowRight") step(1);
+  });
+
+  var rt;
+  window.addEventListener("resize", function(){
+    clearTimeout(rt);
+    rt = setTimeout(function(){ if(teamsBuilt) layout(false); }, 120);
+  });
+
+  // lifecycle tabs: build once, wire part-tab clicks and category-filter clicks
+  lcRenderParts();
+  document.getElementById("lcDbtNode").addEventListener("click", lcOpenTabs);
+  lcPartsTabsEl.addEventListener("click", function(e){
+    var btn = e.target.closest(".part-tab");
+    if(!btn) return;
+    lcShowPart(btn.getAttribute("data-part"));
+  });
+  lcPanelsEl.addEventListener("click", function(e){
+    var catBtn = e.target.closest(".cat-tab");
+    if(catBtn){
+      var cat = catBtn.getAttribute("data-cat");
+      var filterRow = catBtn.closest(".lc-cat-filter");
+      filterRow.querySelectorAll(".cat-tab").forEach(function(b){ b.classList.toggle("is-on", b===catBtn); });
+      var panel = catBtn.closest(".lc-panel");
+      panel.querySelectorAll(".lc-chip").forEach(function(chip){
+        var show = (cat === "all") || (chip.getAttribute("data-cat") === cat);
+        chip.classList.toggle("is-dim", !show);
+      });
+      return;
+    }
+    var togBtn = e.target.closest(".gov-toggle-btn");
+    if(togBtn){
+      var demo = togBtn.closest(".gov-demo");
+      demo.setAttribute("data-state", togBtn.getAttribute("data-tstate"));
+      demo.querySelectorAll(".gov-toggle-btn").forEach(function(b){ b.classList.toggle("is-on", b===togBtn); });
+      return;
+    }
+  });
+
+  // why dbt now: lazily built on first visit, wire dbt-node click and part-tab clicks
+  document.getElementById("wnDbtNode").addEventListener("click", wnOpenTabs);
+  wnPartsTabsEl.addEventListener("click", function(e){
+    var btn = e.target.closest(".part-tab");
+    if(!btn) return;
+    wnShowPart(btn.getAttribute("data-part"));
+  });
+  wnPanelsEl.addEventListener("click", function(e){
+    var pBtn = e.target.closest(".persona-tab");
+    if(!pBtn) return;
+    var persona = pBtn.getAttribute("data-persona");
+    var panel = pBtn.closest(".lc-panel");
+    panel.querySelectorAll(".persona-tab").forEach(function(b){ b.classList.toggle("is-on", b===pBtn); });
+    panel.querySelectorAll(".persona-panel").forEach(function(pp){ pp.classList.toggle("is-on", pp.getAttribute("data-persona")===persona); });
+  });
+
+})();
+</script>
+</body>
+</html>
